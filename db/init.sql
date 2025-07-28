@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS tickets (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    event_date DATE NOT NULL,
+    seat VARCHAR(50) NOT NULL,
+    qr_content VARCHAR(255) UNIQUE NOT NULL,
+    scaned BOOLEAN DEFAULT FALSE,
+    scaned_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

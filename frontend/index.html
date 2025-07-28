@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Tickets Club Deportivo</title>
+    <script src="html5-qrcode.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+
+        /* Estilos para las pestañas */
+        .tab-buttons { display: flex; margin-bottom: 20px; }
+        .tab-button {
+            flex-grow: 1;
+            padding: 10px 15px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            background-color: #eee;
+            text-align: center;
+            font-weight: bold;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+        .tab-button:hover { background-color: #e0e0e0; }
+        .tab-button.active { background-color: white; border-bottom: 1px solid white; }
+        .tab-content {
+            border: 1px solid #ddd;
+            border-top: none;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-bottom-left-radius: 5px;
+            border-bottom-right-radius: 5px;
+        }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+
+        form { margin-bottom: 15px; padding: 0; border: none; background-color: transparent; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="text"], input[type="date"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { background-color: #0056b3; }
+        #response, #validationResult { margin-top: 20px; padding: 10px; border-radius: 4px; }
+        #response.success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        #response.error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        #validationResult.valid { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        #validationResult.invalid { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+
+        /* Estilos específicos para el escáner QR */
+        #qr-reader { width: 100%; max-width: 500px; margin: 20px auto; border: 1px solid #ccc; border-radius: 5px; overflow: hidden; }
+        #qr-reader__dashboard { background-color: #f0f0f0; padding: 10px; border-top: 1px solid #ccc; }
+        #qr-reader__dashboard button { margin: 5px; }
+        #qr-reader__scan_region { border: 2px solid #007bff; border-radius: 5px; }
+        .validation-info { margin-top: 15px; font-weight: bold; }
+        .validation-info.success { color: #155724; }
+        .validation-info.error { color: #721c24; }
+        #stopScannerButton { background-color: #dc3545; }
+        #stopScannerButton:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gestión de Tickets del Club Deportivo</h1>
+
+        <div class="tab-buttons">
+            <div id="createTabButton" class="tab-button active" onclick="openTab('createTab')">Crear Ticket</div>
+            <div id="validateTabButton" class="tab-button" onclick="openTab('validateTab')">Validar Ticket</div>
+        </div>
+
+        <div class="tab-content">
+            <div id="createTab" class="tab-pane active">
+                <h2>Crear Nuevo Ticket</h2>
+                <form id="createTicketForm">
+                    <label for="userId">ID de Usuario:</label>
+                    <input type="text" id="userId" name="user_id" required><br>
+
+                    <label for="eventDate">Fecha del Evento (YYYY-MM-DD):</label>
+                    <input type="date" id="eventDate" name="event_date" required><br>
+
+                    <label for="seat">Asiento:</label>
+                    <input type="text" id="seat" name="seat" required><br>
+
+                    <button type="submit">Generar Ticket y PDF</button>
+                </form>
+                <div id="response"></div>
+            </div>
+
+            <div id="validateTab" class="tab-pane">
+                <h2>Validar Ticket por QR</h2>
+                <div id="qr-reader"></div>
+                <button id="stopScannerButton" style="display: none;">Detener Escáner</button>
+                <div id="validationResult" class="validation-info"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const backendApiUrl = '/api'; // Apunta a la ruta proxied por Nginx
+        let qrScanner = null; // Variable global para la instancia del escáner
+
+        // --- Funcionalidad de Pestañas ---
+        function openTab(tabName) {
+            // Desactivar todas las pestañas y botones
+            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+
+            // Activar la pestaña y el botón seleccionados
+            document.getElementById(tabName).classList.add('active');
+            document.getElementById(tabName + 'Button').classList.add('active');
+
+            if (tabName === 'validateTab') {
+                const qrReaderElement = document.getElementById('qr-reader');
+                if (qrReaderElement) {
+                    // Limpiar el contenido existente del lector para asegurar una inicialización limpia
+                    qrReaderElement.innerHTML = '';
+
+                    // Detener y limpiar el escáner existente antes de intentar uno nuevo
+                    // Esto es crucial para liberar los recursos de la cámara y evitar conflictos
+                    if (qrScanner && qrScanner.isScanning) {
+                        qrScanner.stop().then(() => {
+                            qrScanner.clear(); // Limpia la interfaz del escáner
+                            qrScanner = null; // Reinicia la instancia
+                            initializeAndStartQrScanner(); // Inicializa y arranca de nuevo
+                        }).catch(err => {
+                            console.error("Error al detener escáner existente (puede que ya esté detenido):", err);
+                            // Si falla al detener, intenta forzar la inicialización de todas formas
+                            if (qrScanner) qrScanner.clear(); // Intenta limpiar
+                            qrScanner = null;
+                            initializeAndStartQrScanner();
+                        });
+                    } else if (qrScanner && !qrScanner.isScanning) {
+                        // Si el escáner existe pero está detenido, solo inicialízalo y arráncalo
+                        initializeAndStartQrScanner();
+                    } else {
+                        // Si no existe, inicialízalo por primera vez
+                        initializeAndStartQrScanner();
+                    }
+                } else {
+                    console.error("Elemento 'qr-reader' no encontrado.");
+                    document.getElementById('validationResult').className = 'validation-info error';
+                    document.getElementById('validationResult').textContent = 'Error: No se encontró el elemento HTML para el escáner QR.';
+                }
+                document.getElementById('stopScannerButton').style.display = 'block';
+            } else {
+                // Si cambiamos a otra pestaña, detener el escáner si está activo
+                stopQrScanner();
+                document.getElementById('stopScannerButton').style.display = 'none';
+                const qrReaderElement = document.getElementById('qr-reader');
+                if (qrReaderElement) qrReaderElement.innerHTML = ''; // Limpiar el contenido del lector
+            }
+        }
+
+        // --- Funcionalidad para inicializar y arrancar el escáner QR ---
+        function initializeAndStartQrScanner() {
+            // Verifica que Html5Qrcode esté definido globalmente
+            if (typeof Html5Qrcode === 'undefined') {
+                console.error("Error: La librería Html5Qrcode no está cargada. Asegúrate de que el CDN es accesible.");
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = 'Error: La librería del escáner QR no se ha cargado correctamente. Revise la consola del navegador.';
+                return;
+            }
+
+            // Si qrScanner no está inicializado, crea una nueva instancia
+            if (!qrScanner) {
+                qrScanner = new Html5Qrcode("qr-reader");
+            }
+
+            // Si ya está escaneando, no hacer nada
+            if (qrScanner.isScanning) {
+                console.log("Escáner ya está activo, no se necesita iniciar de nuevo.");
+                return;
+            }
+
+            // Iniciar el escáner
+            qrScanner.start(
+                { facingMode: "environment" }, // Preferir la cámara trasera en móviles
+                {
+                    fps: 10,    // Velocidad de escaneo (fotogramas por segundo)
+                    qrbox: { width: 250, height: 250 } // Área del recuadro de escaneo
+                },
+                qrCodeSuccessCallback,
+                (errorMessage) => { // Callback de error al iniciar
+                    console.warn("Advertencia al iniciar el escáner QR:", errorMessage); // Cambiado a warn, ya que muchos son ruido
+                    // Solo muestra un error persistente si la causa es grave (ej. no hay cámara, permisos denegados)
+                    if (errorMessage.includes("NotAllowedError") || errorMessage.includes("NotFoundError")) {
+                        document.getElementById('validationResult').className = 'validation-info error';
+                        document.getElementById('validationResult').textContent = 'Error: No se pudo acceder a la cámara. Verifique permisos o si hay una cámara disponible.';
+                    } else if (errorMessage.includes("Permission denied")) {
+                        document.getElementById('validationResult').className = 'validation-info error';
+                        document.getElementById('validationResult').textContent = 'Error: Acceso a la cámara denegado. Permita el acceso en la configuración del navegador.';
+                    }
+                }
+            ).catch(err => {
+                console.error("Falló la promesa al iniciar el escáner QR:", err);
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = `Error al iniciar el escáner QR. (Detalle: ${err.message || err})`;
+            });
+            console.log("Intentando iniciar el escáner QR...");
+        }
+
+        // --- Funcionalidad de Crear Ticket ---
+        document.getElementById('createTicketForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('userId').value;
+            const eventDate = document.getElementById('eventDate').value;
+            const seat = document.getElementById('seat').value;
+            const responseDiv = document.getElementById('response');
+            responseDiv.className = '';
+            responseDiv.textContent = 'Generando ticket...';
+
+            try {
+                const response = await fetch(`${backendApiUrl}/ticket/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ user_id: userId, event_date: eventDate, seat: seat })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ticket_${userId}_${eventDate}.pdf`;
+                    document.body.appendChild(a); // Es importante que el elemento esté en el DOM para que el click funcione
+                    a.click();
+                    a.remove(); // Limpia el elemento después de la descarga
+                    window.URL.revokeObjectURL(url); // Libera la URL del objeto
+
+                    responseDiv.className = 'success';
+                    responseDiv.textContent = 'Ticket generado y PDF descargado con éxito.';
+                    document.getElementById('createTicketForm').reset(); // Limpiar formulario
+                } else {
+                    const errorData = await response.json();
+                    responseDiv.className = 'error';
+                    responseDiv.textContent = `Error al generar ticket: ${errorData.error || response.statusText}`;
+                }
+            } catch (error) {
+                responseDiv.className = 'error';
+                responseDiv.textContent = `Error de conexión: ${error.message}`;
+                console.error("Error al crear ticket:", error);
+            }
+        });
+
+        // --- Funcionalidad de Escaneo y Validación QR (Callbacks) ---
+        const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+            console.log(`QR Scanned: ${decodedText}`);
+            stopQrScanner(); // Detener el escáner inmediatamente para evitar lecturas duplicadas
+            document.getElementById('validationResult').textContent = 'Validando QR...';
+
+            try {
+                const response = await fetch(`${backendApiUrl}/ticket/validate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ qr_content: decodedText })
+                });
+
+                const data = await response.json();
+                const validationResultDiv = document.getElementById('validationResult');
+
+                if (response.ok) {
+                    if (data.ticket_info.scaned) {
+                        validationResultDiv.className = 'validation-info error';
+                        validationResultDiv.textContent = `Ticket ya escaneado: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+                    } else {
+                        validationResultDiv.className = 'validation-info success';
+                        validationResultDiv.innerHTML = `Ticket válido: <br>
+                        ID: ${data.ticket_info.id}<br>
+                        Usuario: ${data.ticket_info.user_id}<br>
+                        Fecha Evento: ${data.ticket_info.event_date}<br>
+                        Asiento: ${data.ticket_info.seat}<br>
+                        Escaneado: ${data.ticket_info.scaned ? 'Sí' : 'No'}<br>
+                        Escaneado en: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+
+                        // llamar a la api para marcar el ticket como escaneado
+                        await fetch(`${backendApiUrl}/ticket/update_tiked_scaned`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ qr_content: decodedText })
+                        }); 
+                    }
+                } else {
+                    validationResultDiv.className = 'validation-info invalid';
+                    validationResultDiv.textContent = `Ticket inválido: ${data.message || response.statusText}`;
+                }
+            } catch (error) {
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = `Error de conexión con la API: ${error.message}`;
+                console.error("Error al validar ticket:", error);
+            } finally {
+                // Reanudar el escáner después de un breve retraso para permitir nuevas validaciones
+                setTimeout(initializeAndStartQrScanner, 3000);
+            }
+        };
+
+        const qrCodeErrorCallback = (errorMessage) => {
+            // Este callback se activa constantemente si no hay QR. No es necesario mostrarlo al usuario por cada error menor.
+            // console.warn(`QR Scanner Frame Error: ${errorMessage}`);
+        };
+
+        function stopQrScanner() {
+            if (qrScanner && qrScanner.isScanning) {
+                qrScanner.stop().catch(err => {
+                    console.error("Error al detener el escáner QR:", err);
+                });
+            }
+        }
+
+        document.getElementById('stopScannerButton').addEventListener('click', () => {
+            stopQrScanner();
+            document.getElementById('validationResult').textContent = 'Escáner detenido.';
+            document.getElementById('stopScannerButton').style.display = 'none';
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('createTabButton').addEventListener('click', () => openTab('createTab'));
+            document.getElementById('validateTabButton').addEventListener('click', () => openTab('validateTab'));
+            openTab('createTab'); // Abre la pestaña de creación por defecto al cargar la página
+        });
+    </script>
+</body>
+</html>
