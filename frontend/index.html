@@ -3,221 +3,326 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Tickets Club Deportivo</title>
+    <title>Gestión de Eventos y Tickets</title>
     <script src="html5-qrcode.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h1, h2 { color: #0056b3; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #0056b3; }
 
-        /* Estilos para las pestañas */
-        .tab-buttons { display: flex; margin-bottom: 20px; }
-        .tab-button {
-            flex-grow: 1;
-            padding: 10px 15px;
-            cursor: pointer;
-            border: 1px solid #ddd;
-            border-bottom: none;
-            background-color: #eee;
-            text-align: center;
-            font-weight: bold;
-            border-top-left-radius: 5px;
-            border-top-right-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-        .tab-button:hover { background-color: #e0e0e0; }
-        .tab-button.active { background-color: white; border-bottom: 1px solid white; }
-        .tab-content {
-            border: 1px solid #ddd;
-            border-top: none;
-            padding: 20px;
-            background-color: #f9f9f9;
-            border-bottom-left-radius: 5px;
-            border-bottom-right-radius: 5px;
-        }
-        .tab-pane { display: none; }
-        .tab-pane.active { display: block; }
-
-        form { margin-bottom: 15px; padding: 0; border: none; background-color: transparent; }
+        form { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9; }
         label { display: block; margin-bottom: 8px; font-weight: bold; }
-        input[type="text"], input[type="date"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        input[type="text"], input[type="date"], input[type="number"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; margin-right: 10px;}
         button:hover { background-color: #0056b3; }
-        #response, #validationResult { margin-top: 20px; padding: 10px; border-radius: 4px; }
-        #response.success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
-        #response.error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
-        #validationResult.valid { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
-        #validationResult.invalid { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .info { background-color: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; padding: 10px; border-radius: 4px; margin-top: 10px; }
 
-        /* Estilos específicos para el escáner QR */
+        /* Estilos de la lista de eventos */
+        #eventsList { list-style: none; padding: 0; }
+        #eventsList li {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        #eventsList li div { margin-right: 15px; }
+        #eventsList li h3 { margin: 0 0 5px 0; font-size: 1.2em; }
+        #eventsList li p { margin: 0; color: #555; font-size: 0.9em; }
+        #eventsList li .event-actions button { margin-left: 5px; }
+        #copyLinkButton { background-color: #28a745; }
+        #copyLinkButton:hover { background-color: #218838; }
+
+        /* Validación QR */
+        #qr-reader-container { text-align: center; }
         #qr-reader { width: 100%; max-width: 500px; margin: 20px auto; border: 1px solid #ccc; border-radius: 5px; overflow: hidden; }
         #qr-reader__dashboard { background-color: #f0f0f0; padding: 10px; border-top: 1px solid #ccc; }
         #qr-reader__dashboard button { margin: 5px; }
         #qr-reader__scan_region { border: 2px solid #007bff; border-radius: 5px; }
         .validation-info { margin-top: 15px; font-weight: bold; }
-        .validation-info.success { color: #155724; }
-        .validation-info.error { color: #721c24; }
+        .validation-info.valid { background-color: #d4edda; color: #155724; border-color: #c3e6cb; padding: 10px; border-radius: 4px; }
+        .validation-info.invalid { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; padding: 10px; border-radius: 4px; }
         #stopScannerButton { background-color: #dc3545; }
         #stopScannerButton:hover { background-color: #c82333; }
+
+        /* Modal para crear tickets */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+            max-width: 500px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Gestión de Tickets del Club Deportivo</h1>
+        <div id="mainContent">
+            <h1>Gestión de Eventos del Club Deportivo</h1>
 
-        <div class="tab-buttons">
-            <div id="createTabButton" class="tab-button active" onclick="openTab('createTab')">Crear Ticket</div>
-            <div id="validateTabButton" class="tab-button" onclick="openTab('validateTab')">Validar Ticket</div>
+            <h2>Crear Nuevo Evento</h2>
+            <form id="createEventForm">
+                <label for="eventName">Nombre del Evento:</label>
+                <input type="text" id="eventName" name="name" required><br>
+
+                <label for="eventDate">Fecha del Evento (YYYY-MM-DD):</label>
+                <input type="date" id="eventDate" name="event_date" required><br>
+
+                <label for="eventLocation">Ubicación (Opcional):</label>
+                <input type="text" id="eventLocation" name="location"><br>
+
+                <button type="submit">Crear Evento</button>
+            </form>
+            <div id="eventResponse" class="info"></div>
+
+            <h2>Eventos Existentes</h2>
+            <ul id="eventsList">
+                <li>Cargando eventos...</li>
+            </ul>
         </div>
 
-        <div class="tab-content">
-            <div id="createTab" class="tab-pane active">
-                <h2>Crear Nuevo Ticket</h2>
-                <form id="createTicketForm">
-                    <label for="userId">ID de Usuario:</label>
-                    <input type="text" id="userId" name="user_id" required><br>
-
-                    <label for="eventDate">Fecha del Evento (YYYY-MM-DD):</label>
-                    <input type="date" id="eventDate" name="event_date" required><br>
-
-                    <label for="seat">Asiento:</label>
-                    <input type="text" id="seat" name="seat" required><br>
-
-                    <button type="submit">Generar Ticket y PDF</button>
-                </form>
-                <div id="response"></div>
-            </div>
-
-            <div id="validateTab" class="tab-pane">
-                <h2>Validar Ticket por QR</h2>
+        <div id="validationContent" style="display: none;">
+            <h1 id="validationHeader">Validación de Tickets para Evento: <span id="currentEventName"></span> (<span id="currentEventDate"></span>)</h1>
+            <div id="qr-reader-container">
                 <div id="qr-reader"></div>
                 <button id="stopScannerButton" style="display: none;">Detener Escáner</button>
                 <div id="validationResult" class="validation-info"></div>
             </div>
+            <button onclick="window.location.href='/'">Volver a Gestión de Eventos</button>
         </div>
+
+        <div id="createTicketModal" class="modal">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <h2 id="modalEventName">Crear Tickets para: </h2>
+                <form id="createTicketForm">
+                    <input type="hidden" id="modalEventId">
+                    <label for="ticketUserId">ID de Cliente (Opcional, se generará si está vacío):</label>
+                    <input type="text" id="ticketUserId" name="user_id"><br>
+
+                    <label for="ticketSeat">Asiento:</label>
+                    <input type="text" id="ticketSeat" name="seat" required><br>
+
+                    <button type="submit">Generar Ticket y PDF</button>
+                </form>
+                <div id="ticketResponse" class="info"></div>
+            </div>
+        </div>
+
     </div>
 
     <script>
         const backendApiUrl = '/api'; // Apunta a la ruta proxied por Nginx
         let qrScanner = null; // Variable global para la instancia del escáner
+        let currentEventId = null; // ID del evento actual para la validación
 
-        // --- Funcionalidad de Pestañas ---
-        function openTab(tabName) {
-            // Desactivar todas las pestañas y botones
-            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-            document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+        // --- Funciones de Utilidad ---
+        function getQueryParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
 
-            // Activar la pestaña y el botón seleccionados
-            document.getElementById(tabName).classList.add('active');
-            document.getElementById(tabName + 'Button').classList.add('active');
+        function showSection(sectionId) {
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('validationContent').style.display = 'none';
+            document.getElementById(sectionId).style.display = 'block';
+        }
 
-            if (tabName === 'validateTab') {
-                const qrReaderElement = document.getElementById('qr-reader');
-                if (qrReaderElement) {
-                    // Limpiar el contenido existente del lector para asegurar una inicialización limpia
-                    qrReaderElement.innerHTML = '';
-
-                    // Detener y limpiar el escáner existente antes de intentar uno nuevo
-                    // Esto es crucial para liberar los recursos de la cámara y evitar conflictos
-                    if (qrScanner && qrScanner.isScanning) {
-                        qrScanner.stop().then(() => {
-                            qrScanner.clear(); // Limpia la interfaz del escáner
-                            qrScanner = null; // Reinicia la instancia
-                            initializeAndStartQrScanner(); // Inicializa y arranca de nuevo
-                        }).catch(err => {
-                            console.error("Error al detener escáner existente (puede que ya esté detenido):", err);
-                            // Si falla al detener, intenta forzar la inicialización de todas formas
-                            if (qrScanner) qrScanner.clear(); // Intenta limpiar
-                            qrScanner = null;
-                            initializeAndStartQrScanner();
-                        });
-                    } else if (qrScanner && !qrScanner.isScanning) {
-                        // Si el escáner existe pero está detenido, solo inicialízalo y arráncalo
-                        initializeAndStartQrScanner();
-                    } else {
-                        // Si no existe, inicialízalo por primera vez
-                        initializeAndStartQrScanner();
-                    }
-                } else {
-                    console.error("Elemento 'qr-reader' no encontrado.");
-                    document.getElementById('validationResult').className = 'validation-info error';
-                    document.getElementById('validationResult').textContent = 'Error: No se encontró el elemento HTML para el escáner QR.';
-                }
-                document.getElementById('stopScannerButton').style.display = 'block';
+        // --- Inicialización y Enrutamiento ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const eventIdParam = getQueryParam('event_id');
+            if (eventIdParam) {
+                currentEventId = eventIdParam;
+                showValidationView(currentEventId);
             } else {
-                // Si cambiamos a otra pestaña, detener el escáner si está activo
-                stopQrScanner();
-                document.getElementById('stopScannerButton').style.display = 'none';
-                const qrReaderElement = document.getElementById('qr-reader');
-                if (qrReaderElement) qrReaderElement.innerHTML = ''; // Limpiar el contenido del lector
+                showEventManagementView();
+                loadEvents();
             }
+        });
+
+        // --- Vista de Gestión de Eventos ---
+        function showEventManagementView() {
+            showSection('mainContent');
+            stopQrScanner(); // Asegurarse de que el escáner esté detenido si se vuelve a la gestión
+            document.getElementById('stopScannerButton').style.display = 'none';
         }
 
-        // --- Funcionalidad para inicializar y arrancar el escáner QR ---
-        function initializeAndStartQrScanner() {
-            // Verifica que Html5Qrcode esté definido globalmente
-            if (typeof Html5Qrcode === 'undefined') {
-                console.error("Error: La librería Html5Qrcode no está cargada. Asegúrate de que el CDN es accesible.");
-                document.getElementById('validationResult').className = 'validation-info error';
-                document.getElementById('validationResult').textContent = 'Error: La librería del escáner QR no se ha cargado correctamente. Revise la consola del navegador.';
-                return;
-            }
+        // --- Vista de Validación de Tickets ---
+        async function showValidationView(eventId) {
+            showSection('validationContent');
+            document.getElementById('stopScannerButton').style.display = 'block';
+            document.getElementById('validationResult').textContent = ''; // Limpiar resultados anteriores
 
-            // Si qrScanner no está inicializado, crea una nueva instancia
-            if (!qrScanner) {
-                qrScanner = new Html5Qrcode("qr-reader");
-            }
-
-            // Si ya está escaneando, no hacer nada
-            if (qrScanner.isScanning) {
-                console.log("Escáner ya está activo, no se necesita iniciar de nuevo.");
-                return;
-            }
-
-            // Iniciar el escáner
-            qrScanner.start(
-                { facingMode: "environment" }, // Preferir la cámara trasera en móviles
-                {
-                    fps: 10,    // Velocidad de escaneo (fotogramas por segundo)
-                    qrbox: { width: 250, height: 250 } // Área del recuadro de escaneo
-                },
-                qrCodeSuccessCallback,
-                (errorMessage) => { // Callback de error al iniciar
-                    console.warn("Advertencia al iniciar el escáner QR:", errorMessage); // Cambiado a warn, ya que muchos son ruido
-                    // Solo muestra un error persistente si la causa es grave (ej. no hay cámara, permisos denegados)
-                    if (errorMessage.includes("NotAllowedError") || errorMessage.includes("NotFoundError")) {
-                        document.getElementById('validationResult').className = 'validation-info error';
-                        document.getElementById('validationResult').textContent = 'Error: No se pudo acceder a la cámara. Verifique permisos o si hay una cámara disponible.';
-                    } else if (errorMessage.includes("Permission denied")) {
-                        document.getElementById('validationResult').className = 'validation-info error';
-                        document.getElementById('validationResult').textContent = 'Error: Acceso a la cámara denegado. Permita el acceso en la configuración del navegador.';
-                    }
+            // Obtener y mostrar detalles del evento
+            try {
+                const response = await fetch(`${backendApiUrl}/events/${eventId}`);
+                const eventData = await response.json();
+                if (response.ok) {
+                    document.getElementById('currentEventName').textContent = eventData.name;
+                    document.getElementById('currentEventDate').textContent = eventData.event_date;
+                } else {
+                    document.getElementById('validationHeader').textContent = `Error: Evento ${eventId} no encontrado.`;
                 }
-            ).catch(err => {
-                console.error("Falló la promesa al iniciar el escáner QR:", err);
-                document.getElementById('validationResult').className = 'validation-info error';
-                document.getElementById('validationResult').textContent = `Error al iniciar el escáner QR. (Detalle: ${err.message || err})`;
-            });
-            console.log("Intentando iniciar el escáner QR...");
+            } catch (error) {
+                document.getElementById('validationHeader').textContent = `Error al cargar detalles del evento ${eventId}.`;
+                console.error("Error fetching event details:", error);
+            }
+
+            initializeAndStartQrScanner();
         }
 
-        // --- Funcionalidad de Crear Ticket ---
-        document.getElementById('createTicketForm').addEventListener('submit', async (e) => {
+        // --- Crear Evento ---
+        document.getElementById('createEventForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const userId = document.getElementById('userId').value;
-            const eventDate = document.getElementById('eventDate').value;
-            const seat = document.getElementById('seat').value;
-            const responseDiv = document.getElementById('response');
-            responseDiv.className = '';
-            responseDiv.textContent = 'Generando ticket...';
+            const name = document.getElementById('eventName').value;
+            const event_date = document.getElementById('eventDate').value;
+            const location = document.getElementById('eventLocation').value;
+            const eventResponseDiv = document.getElementById('eventResponse');
+            eventResponseDiv.className = 'info';
+            eventResponseDiv.textContent = 'Creando evento...';
 
             try {
+                const response = await fetch(`${backendApiUrl}/events`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, event_date, location })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    eventResponseDiv.className = 'success';
+                    eventResponseDiv.innerHTML = `Evento "${data.event.name}" creado con éxito.<br>
+                                                 Link de Validación: <a href="${data.event.validation_link}" target="_blank">${window.location.origin}${data.event.validation_link}</a>
+                                                 <button onclick="copyToClipboard('${window.location.origin}${data.event.validation_link}')">Copiar Link</button>`;
+                    document.getElementById('createEventForm').reset();
+                    loadEvents(); // Recargar la lista de eventos
+                } else {
+                    eventResponseDiv.className = 'error';
+                    eventResponseDiv.textContent = `Error al crear evento: ${data.error || response.statusText}`;
+                }
+            } catch (error) {
+                eventResponseDiv.className = 'error';
+                eventResponseDiv.textContent = `Error de conexión: ${error.message}`;
+                console.error("Error creating event:", error);
+            }
+        });
+
+        // --- Cargar Eventos ---
+        async function loadEvents() {
+            const eventsList = document.getElementById('eventsList');
+            eventsList.innerHTML = '<li>Cargando eventos...</li>';
+            try {
+                const response = await fetch(`${backendApiUrl}/events`);
+                const events = await response.json();
+                eventsList.innerHTML = ''; // Limpiar mensaje de carga
+
+                if (events.length === 0) {
+                    eventsList.innerHTML = '<li>No hay eventos creados.</li>';
+                    return;
+                }
+
+                events.forEach(event => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <div>
+                            <h3>${event.name}</h3>
+                            <p>Fecha: ${event.event_date}</p>
+                            <p>Ubicación: ${event.location || 'N/A'}</p>
+                            <p>ID: ${event.id}</p>
+                        </div>
+                        <div class="event-actions">
+                            <button onclick="openCreateTicketModal(${event.id}, '${event.name}', '${event.event_date}')">Dar de Alta Clientes</button>
+                            <button onclick="copyToClipboard('${window.location.origin}${event.validation_link}')">Copiar Link de Validación</button>
+                            <button onclick="window.location.href='${event.validation_link}'">Ir a Validación</button>
+                        </div>
+                    `;
+                    eventsList.appendChild(li);
+                });
+            } catch (error) {
+                eventsList.innerHTML = '<li class="error">Error al cargar eventos.</li>';
+                console.error("Error loading events:", error);
+            }
+        }
+
+        // --- Funciones para el Modal de Crear Tickets ---
+        const createTicketModal = document.getElementById('createTicketModal');
+        const closeButton = document.querySelector('.close-button');
+        const modalEventName = document.getElementById('modalEventName');
+        const modalEventId = document.getElementById('modalEventId');
+        const createTicketForm = document.getElementById('createTicketForm');
+        const ticketResponse = document.getElementById('ticketResponse');
+
+        closeButton.onclick = () => {
+            createTicketModal.style.display = 'none';
+        }
+
+        window.onclick = (event) => {
+            if (event.target == createTicketModal) {
+                createTicketModal.style.display = 'none';
+            }
+        }
+
+        function openCreateTicketModal(eventId, eventName, eventDate) {
+            modalEventName.textContent = `Crear Tickets para: ${eventName} (${eventDate})`;
+            modalEventId.value = eventId;
+            ticketResponse.className = 'info';
+            ticketResponse.textContent = ''; // Limpiar mensaje anterior
+            createTicketForm.reset(); // Limpiar formulario del modal
+            createTicketModal.style.display = 'block';
+        }
+
+        createTicketForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const event_id = document.getElementById('modalEventId').value;
+            const user_id = document.getElementById('ticketUserId').value;
+            const seat = document.getElementById('ticketSeat').value;
+
+            ticketResponse.className = 'info';
+            ticketResponse.textContent = 'Generando ticket...';
+
+            try {
+                const payload = { event_id, seat };
+                if (user_id) { // Solo añadir user_id si no está vacío
+                    payload.user_id = user_id;
+                }
+
                 const response = await fetch(`${backendApiUrl}/ticket/create`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ user_id: userId, event_date: eventDate, seat: seat })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
 
                 if (response.ok) {
@@ -225,40 +330,70 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `ticket_${userId}_${eventDate}.pdf`;
-                    document.body.appendChild(a); // Es importante que el elemento esté en el DOM para que el click funcione
+                    a.download = `ticket_${event_id}_${user_id || 'generado'}.pdf`;
+                    document.body.appendChild(a);
                     a.click();
-                    a.remove(); // Limpia el elemento después de la descarga
-                    window.URL.revokeObjectURL(url); // Libera la URL del objeto
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
 
-                    responseDiv.className = 'success';
-                    responseDiv.textContent = 'Ticket generado y PDF descargado con éxito.';
-                    document.getElementById('createTicketForm').reset(); // Limpiar formulario
+                    ticketResponse.className = 'success';
+                    ticketResponse.textContent = 'Ticket generado y PDF descargado con éxito.';
+                    createTicketForm.reset(); // Limpiar formulario del modal
                 } else {
                     const errorData = await response.json();
-                    responseDiv.className = 'error';
-                    responseDiv.textContent = `Error al generar ticket: ${errorData.error || response.statusText}`;
+                    ticketResponse.className = 'error';
+                    ticketResponse.textContent = `Error al generar ticket: ${errorData.error || response.statusText}`;
                 }
             } catch (error) {
-                responseDiv.className = 'error';
-                responseDiv.textContent = `Error de conexión: ${error.message}`;
+                ticketResponse.className = 'error';
+                ticketResponse.textContent = `Error de conexión: ${error.message}`;
                 console.error("Error al crear ticket:", error);
             }
         });
 
-        // --- Funcionalidad de Escaneo y Validación QR (Callbacks) ---
+        // --- Funcionalidad de Escaneo y Validación QR ---
+        function initializeAndStartQrScanner() {
+            if (typeof Html5Qrcode === 'undefined') {
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = 'Error: La librería del escáner QR no se ha cargado correctamente.';
+                return;
+            }
+
+            if (!qrScanner) {
+                qrScanner = new Html5Qrcode("qr-reader");
+            }
+
+            if (qrScanner.isScanning) {
+                console.log("Escáner ya está activo, no se necesita iniciar de nuevo.");
+                return;
+            }
+
+            qrScanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                qrCodeSuccessCallback,
+                (errorMessage) => {
+                    if (errorMessage.includes("NotAllowedError") || errorMessage.includes("NotFoundError") || errorMessage.includes("Permission denied")) {
+                        document.getElementById('validationResult').className = 'validation-info error';
+                        document.getElementById('validationResult').textContent = 'Error: No se pudo acceder a la cámara. Verifique permisos o si hay una cámara disponible.';
+                    }
+                }
+            ).catch(err => {
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = `Error al iniciar el escáner QR. (Detalle: ${err.message || err})`;
+            });
+        }
+
         const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
             console.log(`QR Scanned: ${decodedText}`);
-            stopQrScanner(); // Detener el escáner inmediatamente para evitar lecturas duplicadas
+            stopQrScanner();
             document.getElementById('validationResult').textContent = 'Validando QR...';
 
             try {
                 const response = await fetch(`${backendApiUrl}/ticket/validate`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ qr_content: decodedText })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ qr_content: decodedText, event_id: currentEventId })
                 });
 
                 const data = await response.json();
@@ -266,44 +401,34 @@
 
                 if (response.ok) {
                     if (data.ticket_info.scaned) {
-                        validationResultDiv.className = 'validation-info error';
-                        validationResultDiv.textContent = `Ticket ya escaneado: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+                        validationResultDiv.className = 'validation-info invalid'; // Usar invalid para ya escaneado
+                        validationResultDiv.textContent = `Ticket ya escaneado: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}. Pertenece a ${data.ticket_info.user_id}, Asiento: ${data.ticket_info.seat}`;
                     } else {
-                        validationResultDiv.className = 'validation-info success';
-                        validationResultDiv.innerHTML = `Ticket válido: <br>
+                        validationResultDiv.className = 'validation-info valid';
+                        validationResultDiv.innerHTML = `Ticket válido para el evento ${currentEventId}: <br>
                         ID: ${data.ticket_info.id}<br>
-                        Usuario: ${data.ticket_info.user_id}<br>
-                        Fecha Evento: ${data.ticket_info.event_date}<br>
-                        Asiento: ${data.ticket_info.seat}<br>
-                        Escaneado: ${data.ticket_info.scaned ? 'Sí' : 'No'}<br>
-                        Escaneado en: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+                        Usuario/Cliente: ${data.ticket_info.user_id}<br>
+                        Asiento: ${data.ticket_info.seat}`;
 
-                        // llamar a la api para marcar el ticket como escaneado
-                        await fetch(`${backendApiUrl}/ticket/update_tiked_scaned`, {
+                        // Marcar el ticket como escaneado
+                        await fetch(`${backendApiUrl}/ticket/update_scaned`, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ qr_content: decodedText })
-                        }); 
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ qr_content: decodedText, event_id: currentEventId })
+                        });
                     }
                 } else {
                     validationResultDiv.className = 'validation-info invalid';
-                    validationResultDiv.textContent = `Ticket inválido: ${data.message || response.statusText}`;
+                    validationResultDiv.textContent = `Ticket inválido para este evento: ${data.message || response.statusText}`;
                 }
             } catch (error) {
                 document.getElementById('validationResult').className = 'validation-info error';
                 document.getElementById('validationResult').textContent = `Error de conexión con la API: ${error.message}`;
                 console.error("Error al validar ticket:", error);
             } finally {
-                // Reanudar el escáner después de un breve retraso para permitir nuevas validaciones
+                // Reanudar el escáner después de un breve retraso
                 setTimeout(initializeAndStartQrScanner, 3000);
             }
-        };
-
-        const qrCodeErrorCallback = (errorMessage) => {
-            // Este callback se activa constantemente si no hay QR. No es necesario mostrarlo al usuario por cada error menor.
-            // console.warn(`QR Scanner Frame Error: ${errorMessage}`);
         };
 
         function stopQrScanner() {
@@ -320,11 +445,15 @@
             document.getElementById('stopScannerButton').style.display = 'none';
         });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('createTabButton').addEventListener('click', () => openTab('createTab'));
-            document.getElementById('validateTabButton').addEventListener('click', () => openTab('validateTab'));
-            openTab('createTab'); // Abre la pestaña de creación por defecto al cargar la página
-        });
+        // --- Funciones de Portapapeles ---
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('¡Enlace copiado al portapapeles!');
+            }).catch(err => {
+                console.error('Error al copiar el texto: ', err);
+                alert('No se pudo copiar el enlace. Por favor, cópielo manualmente: ' + text);
+            });
+        }
     </script>
 </body>
 </html>

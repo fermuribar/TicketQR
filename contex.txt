@@ -1,0 +1,765 @@
+## Resumen Completo de tu Aplicación de Gestión de Tickets (TicketQR)
+
+Tu aplicación es un sistema web de gestión de tickets diseñado para clubes deportivos, con una arquitectura moderna basada en microservicios y orquestada con Docker Compose. Utiliza PostgreSQL como base de datos, un backend Flask para la lógica de negocio y un frontend HTML/CSS/JS servido por Nginx, con capacidades de escaneo QR y generación de PDFs.
+
+### 1\. Arquitectura General
+
+La aplicación sigue un patrón de **tres capas**:
+
+  * **Frontend:** Interfaz de usuario interactiva (HTML, CSS, JavaScript).
+  * **Backend:** API REST para la lógica de negocio y la gestión de datos (Python Flask).
+  * **Base de Datos:** Almacenamiento persistente de tickets (PostgreSQL).
+
+Todos los componentes están **contenidos en Docker** y orquestados mediante `docker-compose.yml`.
+
+### 2\. Servicios Docker y su Configuración
+
+#### a. `db` (Base de Datos PostgreSQL)
+
+  * **Imagen:** `postgres:13`
+  * **Propósito:** Almacena la información de los tickets.
+  * **Credenciales:**
+      * `POSTGRES_DB: clubdb`
+      * `POSTGRES_USER: user`
+      * `POSTGRES_PASSWORD: password`
+  * **Volumen:** `db_data` (persistente), montado en `/var/lib/postgresql/data`.
+  * **Inicialización:** `./db/init.sql` se ejecuta en el primer arranque o si el volumen `db_data` se elimina.
+  * **Salud:** `healthcheck` asegura que la DB esté lista antes de que el `backend` se conecte.
+
+#### b. `backend` (API Flask)
+
+  * **Construcción:** A partir de `backend/Dockerfile`.
+  * **Propósito:** Lógica de negocio, creación/validación/actualización de tickets, generación de QR y PDFs.
+  * **Entorno:**
+      * `DB_HOST: db` (se conecta al servicio `db` de Docker Compose)
+      * `DB_NAME: clubdb`
+      * `DB_USER: user`
+      * `DB_PASSWORD: password`
+  * **Dependencia:** `db` (asegura que `db` esté `healthy`).
+  * **Puerto Interno:** 5000 (expuesto).
+  * **Volumen de Desarrollo:** `./backend:/app`
+
+#### c. `frontend` (Servidor Nginx y Aplicación Web)
+
+  * **Construcción:** A partir de `frontend/Dockerfile`.
+  * **Propósito:** Servir la aplicación web estática, gestionar certificados SSL y actuar como proxy inverso para el backend.
+  * **Puertos Expuestos:** `80:80` (HTTP) y `443:443` (HTTPS) en el host.
+  * **Dependencia:** `backend` (asegura que `backend` esté `started`).
+  * **Certificados SSL:** Carga `./certs/nginx-selfsigned.crt` y `./certs/nginx-selfsigned.key` para HTTPS.
+  * **Configuración Nginx:** Carga `./frontend/nginx.conf`.
+  * **Archivos Web:** `./frontend:/usr/share/nginx/html` (para desarrollo).
+
+#### d. `adminer` (Gestor de Base de Datos - Opcional)
+
+  * **Imagen:** `adminer:latest`
+  * **Propósito:** Interfaz web ligera para administrar la base de datos PostgreSQL.
+  * **Puerto:** `8080:8080` (host:contenedor).
+  * **Dependencia:** `db` (asegura que `db` esté `healthy`).
+  * **Sin Volumen:** No persiste la configuración de Adminer (servidores añadidos), útil para entornos de desarrollo/prueba rápidos.
+
+### 3\. Archivos Clave
+
+Aquí se detallan los contenidos de los archivos clave que has compartido:
+
+#### a. `docker-compose.yml`
+
+```yaml
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    restart: always
+    environment:
+      POSTGRES_DB: clubdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d clubdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: always
+    environment:
+      DB_HOST: db
+      DB_NAME: clubdb
+      DB_USER: user
+      DB_PASSWORD: password
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build: ./frontend
+    restart: always
+    ports:
+      - "80:80" # El frontend expone el puerto 80 del host
+      - "443:443" # El frontend expone el puerto 443 del host
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./frontend:/usr/share/nginx/html # Monta los archivos estáticos para desarrollo
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf # Monta la configuración de Nginx
+
+  adminer:
+    image: adminer:latest # Imagen oficial de Adminer
+    container_name: tu_adminer
+    restart: always
+    ports:
+      - "8080:8080" # Mapea el puerto 8080 del contenedor de Adminer al 8080 de tu máquina
+    depends_on:
+      db:
+        condition: service_healthy # Asegura que la BD esté lista antes de iniciar Adminer
+
+volumes:
+  db_data:
+```
+
+#### b. `db/init.sql`
+
+```sql
+CREATE TABLE IF NOT EXISTS tickets (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    event_date DATE NOT NULL,
+    seat VARCHAR(50) NOT NULL,
+    qr_content VARCHAR(255) UNIQUE NOT NULL,
+    scaned BOOLEAN DEFAULT FALSE,
+    scaned_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### c. `backend/Dockerfile`
+
+```dockerfile
+# Usa una imagen base de Python
+FROM python:3.9-slim-buster
+
+# Establece el directorio de trabajo dentro del contenedor
+WORKDIR /app
+
+# Copia los archivos de requisitos e instálalos
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia el código de la aplicación
+COPY app.py .
+
+# Expone el puerto en el que correrá la aplicación Flask
+EXPOSE 5000
+
+# Comando para ejecutar la aplicación
+CMD ["python", "app.py"]
+```
+
+#### d. `backend/requirements.txt`
+
+```
+Flask
+psycopg2-binary
+qrcode
+reportlab
+Flask-Cors
+```
+
+#### e. `backend/app.py`
+
+```python
+import os
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS # Importa CORS
+import psycopg2
+from psycopg2.extras import DictCursor
+import qrcode
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from io import BytesIO
+import uuid
+from datetime import datetime
+from reportlab.lib.utils import ImageReader
+
+app = Flask(__name__)
+CORS(app) # Habilita CORS para todas las rutas de la aplicación
+
+# Configuración de la base de datos (usando variables de entorno de docker-compose)
+DB_HOST = os.getenv('DB_HOST', 'db')
+DB_NAME = os.getenv('DB_NAME', 'clubdb')
+DB_USER = os.getenv('DB_USER', 'user')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'password')
+
+def get_db_connection():
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    return conn
+
+@app.route('/')
+def home():
+    return "Backend API del Club Deportivo"
+
+@app.route('/ticket/create', methods=['POST'])
+def create_ticket():
+    data = request.json
+    user_id = data.get('user_id')
+    event_date_str = data.get('event_date')
+    seat = data.get('seat')
+
+    if not all([user_id, event_date_str, seat]):
+        return jsonify({"error": "Faltan datos: user_id, event_date, seat"}), 400
+
+    try:
+        event_date = datetime.strptime(event_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
+
+    # Generar un contenido único para el QR
+    qr_content = str(uuid.uuid4())
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO tickets (user_id, event_date, seat, qr_content) VALUES (%s, %s, %s, %s) RETURNING id;",
+            (user_id, event_date, seat, qr_content)
+        )
+        ticket_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+
+        # Generar QR y PDF
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+
+        # Información del ticket en el PDF
+        c.drawString(50, height - 50, f"Ticket para el Club Deportivo")
+        c.drawString(50, height - 70, f"ID de Ticket: {ticket_id}")
+        c.drawString(50, height - 90, f"Usuario: {user_id}")
+        c.drawString(50, height - 110, f"Evento: {event_date.strftime('%d/%m/%Y')}")
+        c.drawString(50, height - 130, f"Asiento: {seat}")
+
+        # Generar imagen QR
+        qr_img = qrcode.make(qr_content)
+        qr_img_buffer = BytesIO()
+        qr_img.save(qr_img_buffer, format='PNG')
+        qr_img_buffer.seek(0)
+
+        # Convertir el buffer a ImageReader
+        qr_img_reader = ImageReader(qr_img_buffer)
+
+        # Dibujar QR en el PDF
+        c.drawImage(qr_img_reader, width / 2 - 100, height - 300, width=200, height=200)
+        c.drawString(50, height - 350, "Presente este QR para validación")
+
+        c.save()
+        buffer.seek(0)
+
+        return send_file(buffer, download_name=f'ticket_{ticket_id}.pdf', mimetype='application/pdf')
+
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": f"Error de base de datos: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error interno del servidor: {e}"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/ticket/validate', methods=['POST'])
+def validate_ticket():
+    data = request.json
+    qr_content = data.get('qr_content')
+
+    if not qr_content:
+        return jsonify({"error": "Contenido QR no proporcionado"}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=DictCursor)
+        cur.execute("SELECT * FROM tickets WHERE qr_content = %s;", (qr_content,))
+        ticket = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if ticket:
+            return jsonify({
+                "status": "valid",
+                "message": "Ticket válido",
+                "ticket_info": {
+                    "id": ticket['id'],
+                    "user_id": ticket['user_id'],
+                    "event_date": ticket['event_date'].strftime('%Y-%m-%d'),
+                    "seat": ticket['seat'],
+                    "scaned": ticket['scaned'],
+                    "scaned_at": ticket['scaned_at'].strftime('%Y-%m-%d %H:%M:%S') if ticket['scaned_at'] else None
+                }
+            }), 200
+        else:
+            return jsonify({"status": "invalid", "message": "Ticket no encontrado o inválido"}), 404
+
+    except psycopg2.Error as e:
+        return jsonify({"error": f"Error de base de datos: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error interno del servidor: {e}"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/ticket/update_tiked_scaned', methods=['POST'])
+def update_ticket_scaned():
+    data = request.json
+    qr_content = data.get('qr_content')
+
+    if not qr_content:
+        return jsonify({"error": "Contenido QR no proporcionado"}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE tickets SET scaned = TRUE, scaned_at = NOW() WHERE qr_content = %s RETURNING id;", (qr_content,))
+        updated_ticket_id = cur.fetchone()
+
+        if updated_ticket_id:
+            conn.commit()
+            cur.close()
+            return jsonify({"status": "success", "message": "Ticket actualizado como escaneado", "ticket_id": updated_ticket_id[0]}), 200
+        else:
+            return jsonify({"status": "error", "message": "Ticket no encontrado o ya escaneado"}), 404
+
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": f"Error de base de datos: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error interno del servidor: {e}"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+```
+
+#### f. `frontend/Dockerfile`
+
+```dockerfile
+# Usa una imagen base de Nginx
+FROM nginx:alpine
+
+# Copia los certificados SSL al contenedor
+# Asegúrate de que la carpeta 'certs' esté en el mismo nivel que tu Dockerfile
+COPY ./certs/nginx-selfsigned.crt /etc/nginx/ssl/nginx-selfsigned.crt
+COPY ./certs/nginx-selfsigned.key /etc/nginx/ssl/nginx-selfsigned.key
+
+# Copia la configuración de Nginx al contenedor
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copia los archivos estáticos de la web al directorio de Nginx
+COPY . /usr/share/nginx/html
+
+# Expone el puerto 80
+EXPOSE 80
+EXPOSE 443
+
+# Comando para iniciar Nginx (ya es el CMD por defecto de la imagen)
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+#### g. `frontend/nginx.conf`
+
+```nginx
+# Server para redireccionar todo el tráfico HTTP a HTTPS
+server {
+    listen 80;
+    server_name localhost; # O tu dominio si lo estás usando
+
+    return 301 https://$host$request_uri; # Redirecciona a HTTPS
+}
+
+# Server principal para el tráfico HTTPS
+server {
+    listen 443 ssl;
+    server_name localhost; # O tu dominio
+
+    # Rutas a tus certificados SSL dentro del contenedor Docker
+    ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
+    ssl_certificate_key /etc/nginx/ssl/nginx-selfsigned.key;
+
+    # Configuraciones SSL recomendadas para mayor seguridad
+    ssl_session_cache shared:SSL:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256";
+    ssl_prefer_server_ciphers on;
+
+    # Ruta para los archivos estáticos del frontend
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html; # Permite SPAs (Single Page Applications)
+    }
+
+    # Proxy inverso para las llamadas a la API del backend
+    # Todas las solicitudes que empiezan por /api/ se redirigen al servicio 'backend'
+    location /api/ {
+        proxy_pass http://backend:5000/; # 'backend' es el nombre del servicio en docker-compose
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Elimina /api/ del path antes de enviar al backend
+        rewrite ^/api/(.*)$ /$1 break;
+    }
+}
+```
+
+#### h. `index.html`
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Tickets Club Deportivo</title>
+    <script src="html5-qrcode.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+
+        /* Estilos para las pestañas */
+        .tab-buttons { display: flex; margin-bottom: 20px; }
+        .tab-button {
+            flex-grow: 1;
+            padding: 10px 15px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            background-color: #eee;
+            text-align: center;
+            font-weight: bold;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+        .tab-button:hover { background-color: #e0e0e0; }
+        .tab-button.active { background-color: white; border-bottom: 1px solid white; }
+        .tab-content {
+            border: 1px solid #ddd;
+            border-top: none;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-bottom-left-radius: 5px;
+            border-bottom-right-radius: 5px;
+        }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+
+        form { margin-bottom: 15px; padding: 0; border: none; background-color: transparent; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="text"], input[type="date"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { background-color: #0056b3; }
+        #response, #validationResult { margin-top: 20px; padding: 10px; border-radius: 4px; }
+        #response.success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        #response.error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        #validationResult.valid { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        #validationResult.invalid { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+
+        /* Estilos específicos para el escáner QR */
+        #qr-reader { width: 100%; max-width: 500px; margin: 20px auto; border: 1px solid #ccc; border-radius: 5px; overflow: hidden; }
+        #qr-reader__dashboard { background-color: #f0f0f0; padding: 10px; border-top: 1px solid #ccc; }
+        #qr-reader__dashboard button { margin: 5px; }
+        #qr-reader__scan_region { border: 2px solid #007bff; border-radius: 5px; }
+        .validation-info { margin-top: 15px; font-weight: bold; }
+        .validation-info.success { color: #155724; }
+        .validation-info.error { color: #721c24; }
+        #stopScannerButton { background-color: #dc3545; }
+        #stopScannerButton:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gestión de Tickets del Club Deportivo</h1>
+
+        <div class="tab-buttons">
+            <div id="createTabButton" class="tab-button active" onclick="openTab('createTab')">Crear Ticket</div>
+            <div id="validateTabButton" class="tab-button" onclick="openTab('validateTab')">Validar Ticket</div>
+        </div>
+
+        <div class="tab-content">
+            <div id="createTab" class="tab-pane active">
+                <h2>Crear Nuevo Ticket</h2>
+                <form id="createTicketForm">
+                    <label for="userId">ID de Usuario:</label>
+                    <input type="text" id="userId" name="user_id" required><br>
+
+                    <label for="eventDate">Fecha del Evento (YYYY-MM-DD):</label>
+                    <input type="date" id="eventDate" name="event_date" required><br>
+
+                    <label for="seat">Asiento:</label>
+                    <input type="text" id="seat" name="seat" required><br>
+
+                    <button type="submit">Generar Ticket y PDF</button>
+                </form>
+                <div id="response"></div>
+            </div>
+
+            <div id="validateTab" class="tab-pane">
+                <h2>Validar Ticket por QR</h2>
+                <div id="qr-reader"></div>
+                <button id="stopScannerButton" style="display: none;">Detener Escáner</button>
+                <div id="validationResult" class="validation-info"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const backendApiUrl = '/api'; // Apunta a la ruta proxied por Nginx
+        let qrScanner = null; // Variable global para la instancia del escáner
+
+        // --- Funcionalidad de Pestañas ---
+        function openTab(tabName) {
+            // Desactivar todas las pestañas y botones
+            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+
+            // Activar la pestaña y el botón seleccionados
+            document.getElementById(tabName).classList.add('active');
+            document.getElementById(tabName + 'Button').classList.add('active');
+
+            if (tabName === 'validateTab') {
+                const qrReaderElement = document.getElementById('qr-reader');
+                if (qrReaderElement) {
+                    // Limpiar el contenido existente del lector para asegurar una inicialización limpia
+                    qrReaderElement.innerHTML = '';
+
+                    // Detener y limpiar el escáner existente antes de intentar uno nuevo
+                    // Esto es crucial para liberar los recursos de la cámara y evitar conflictos
+                    if (qrScanner && qrScanner.isScanning) {
+                        qrScanner.stop().then(() => {
+                            qrScanner.clear(); // Limpia la interfaz del escáner
+                            qrScanner = null; // Reinicia la instancia
+                            initializeAndStartQrScanner(); // Inicializa y arranca de nuevo
+                        }).catch(err => {
+                            console.error("Error al detener escáner existente (puede que ya esté detenido):", err);
+                            // Si falla al detener, intenta forzar la inicialización de todas formas
+                            if (qrScanner) qrScanner.clear(); // Intenta limpiar
+                            qrScanner = null;
+                            initializeAndStartQrScanner();
+                        });
+                    } else if (qrScanner && !qrScanner.isScanning) {
+                        // Si el escáner existe pero está detenido, solo inicialízalo y arráncalo
+                        initializeAndStartQrScanner();
+                    } else {
+                        // Si no existe, inicialízalo por primera vez
+                        initializeAndStartQrScanner();
+                    }
+                } else {
+                    console.error("Elemento 'qr-reader' no encontrado.");
+                    document.getElementById('validationResult').className = 'validation-info error';
+                    document.getElementById('validationResult').textContent = 'Error: No se encontró el elemento HTML para el escáner QR.';
+                }
+                document.getElementById('stopScannerButton').style.display = 'block';
+            } else {
+                // Si cambiamos a otra pestaña, detener el escáner si está activo
+                stopQrScanner();
+                document.getElementById('stopScannerButton').style.display = 'none';
+                const qrReaderElement = document.getElementById('qr-reader');
+                if (qrReaderElement) qrReaderElement.innerHTML = ''; // Limpiar el contenido del lector
+            }
+        }
+
+        // --- Funcionalidad para inicializar y arrancar el escáner QR ---
+        function initializeAndStartQrScanner() {
+            // Verifica que Html5Qrcode esté definido globalmente
+            if (typeof Html5Qrcode === 'undefined') {
+                console.error("Error: La librería Html5Qrcode no está cargada. Asegúrate de que el CDN es accesible.");
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = 'Error: La librería del escáner QR no se ha cargado correctamente. Revise la consola del navegador.';
+                return;
+            }
+
+            // Si qrScanner no está inicializado, crea una nueva instancia
+            if (!qrScanner) {
+                qrScanner = new Html5Qrcode("qr-reader");
+            }
+
+            // Si ya está escaneando, no hacer nada
+            if (qrScanner.isScanning) {
+                console.log("Escáner ya está activo, no se necesita iniciar de nuevo.");
+                return;
+            }
+
+            // Iniciar el escáner
+            qrScanner.start(
+                { facingMode: "environment" }, // Preferir la cámara trasera en móviles
+                {
+                    fps: 10,    // Velocidad de escaneo (fotogramas por segundo)
+                    qrbox: { width: 250, height: 250 } // Área del recuadro de escaneo
+                },
+                qrCodeSuccessCallback,
+                (errorMessage) => { // Callback de error al iniciar
+                    console.warn("Advertencia al iniciar el escáner QR:", errorMessage); // Cambiado a warn, ya que muchos son ruido
+                    // Solo muestra un error persistente si la causa es grave (ej. no hay cámara, permisos denegados)
+                    if (errorMessage.includes("NotAllowedError") || errorMessage.includes("NotFoundError")) {
+                        document.getElementById('validationResult').className = 'validation-info error';
+                        document.getElementById('validationResult').textContent = 'Error: No se pudo acceder a la cámara. Verifique permisos o si hay una cámara disponible.';
+                    } else if (errorMessage.includes("Permission denied")) {
+                        document.getElementById('validationResult').className = 'validation-info error';
+                        document.getElementById('validationResult').textContent = 'Error: Acceso a la cámara denegado. Permita el acceso en la configuración del navegador.';
+                    }
+                }
+            ).catch(err => {
+                console.error("Falló la promesa al iniciar el escáner QR:", err);
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = `Error al iniciar el escáner QR. (Detalle: ${err.message || err})`;
+            });
+            console.log("Intentando iniciar el escáner QR...");
+        }
+
+        // --- Funcionalidad de Crear Ticket ---
+        document.getElementById('createTicketForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('userId').value;
+            const eventDate = document.getElementById('eventDate').value;
+            const seat = document.getElementById('seat').value;
+            const responseDiv = document.getElementById('response');
+            responseDiv.className = '';
+            responseDiv.textContent = 'Generando ticket...';
+
+            try {
+                const response = await fetch(`${backendApiUrl}/ticket/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ user_id: userId, event_date: eventDate, seat: seat })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ticket_${userId}_${eventDate}.pdf`;
+                    document.body.appendChild(a); // Es importante que el elemento esté en el DOM para que el click funcione
+                    a.click();
+                    a.remove(); // Limpia el elemento después de la descarga
+                    window.URL.revokeObjectURL(url); // Libera la URL del objeto
+
+                    responseDiv.className = 'success';
+                    responseDiv.textContent = 'Ticket generado y PDF descargado con éxito.';
+                    document.getElementById('createTicketForm').reset(); // Limpiar formulario
+                } else {
+                    const errorData = await response.json();
+                    responseDiv.className = 'error';
+                    responseDiv.textContent = `Error al generar ticket: ${errorData.error || response.statusText}`;
+                }
+            } catch (error) {
+                responseDiv.className = 'error';
+                responseDiv.textContent = `Error de conexión: ${error.message}`;
+                console.error("Error al crear ticket:", error);
+            }
+        });
+
+        // --- Funcionalidad de Escaneo y Validación QR (Callbacks) ---
+        const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+            console.log(`QR Scanned: ${decodedText}`);
+            stopQrScanner(); // Detener el escáner inmediatamente para evitar lecturas duplicadas
+            document.getElementById('validationResult').textContent = 'Validando QR...';
+
+            try {
+                const response = await fetch(`${backendApiUrl}/ticket/validate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ qr_content: decodedText })
+                });
+
+                const data = await response.json();
+                const validationResultDiv = document.getElementById('validationResult');
+
+                if (response.ok) {
+                    if (data.ticket_info.scaned) {
+                        validationResultDiv.className = 'validation-info error';
+                        validationResultDiv.textContent = `Ticket ya escaneado: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+                    } else {
+                        validationResultDiv.className = 'validation-info success';
+                        validationResultDiv.innerHTML = `Ticket válido: <br>
+                        ID: ${data.ticket_info.id}<br>
+                        Usuario: ${data.ticket_info.user_id}<br>
+                        Fecha Evento: ${data.ticket_info.event_date}<br>
+                        Asiento: ${data.ticket_info.seat}<br>
+                        Escaneado: ${data.ticket_info.scaned ? 'Sí' : 'No'}<br>
+                        Escaneado en: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+
+                        // llamar a la api para marcar el ticket como escaneado
+                        await fetch(`${backendApiUrl}/ticket/update_tiked_scaned`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ qr_content: decodedText })
+                        }); 
+                    }
+                } else {
+                    validationResultDiv.className = 'validation-info invalid';
+                    validationResultDiv.textContent = `Ticket inválido: ${data.message || response.statusText}`;
+                }
+            } catch (error) {
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = `Error de conexión con la API: ${error.message}`;
+                console.error("Error al validar ticket:", error);
+            } finally {
+                // Reanudar el escáner después de un breve retraso para permitir nuevas validaciones
+                setTimeout(initializeAndStartQrScanner, 3000);
+            }
+        };
+
+        const qrCodeErrorCallback = (errorMessage) => {
+            // Este callback se activa constantemente si no hay QR. No es necesario mostrarlo al usuario por cada error menor.
+            // console.warn(`QR Scanner Frame Error: ${errorMessage}`);
+        };
+
+        function stopQrScanner() {
+            if (qrScanner && qrScanner.isScanning) {
+                qrScanner.stop().catch(err => {
+                    console.error("Error al detener el escáner QR:", err);
+                });
+            }
+        }
+
+        document.getElementById('stopScannerButton').addEventListener('click', () => {
+            stopQrScanner();
+            document.getElementById('validationResult').textContent = 'Escáner detenido.';
+            document.getElementById('stopScannerButton').style.display = 'none';
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('createTabButton').addEventListener('click', () => openTab('createTab'));
+            document.getElementById('validateTabButton').addEventListener('click', () => openTab('validateTab'));
+            openTab('createTab'); // Abre la pestaña de creación por defecto al cargar la página
+        });
+    </script>
+</body>
+</html>
+```
