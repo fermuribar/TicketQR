@@ -1,67 +1,27 @@
-## Resumen Completo de tu Aplicación de Gestión de Tickets (TicketQR)
+### Estructura de Carpetas del Proyecto
 
-Tu aplicación es un sistema web de gestión de tickets diseñado para clubes deportivos, con una arquitectura moderna basada en microservicios y orquestada con Docker Compose. Utiliza PostgreSQL como base de datos, un backend Flask para la lógica de negocio y un frontend HTML/CSS/JS servido por Nginx, con capacidades de escaneo QR y generación de PDFs.
+Asegúrate de que tu proyecto tenga la siguiente estructura de carpetas:
 
-### 1\. Arquitectura General
+```
+.
+├── docker-compose.yml
+├── db
+│   └── init.sql
+├── backend
+│   ├── Dockerfile
+│   └── app.py
+└── frontend
+    ├── Dockerfile
+    ├── nginx.conf
+    ├── index.html
+    └── html5-qrcode.min.js
+```
 
-La aplicación sigue un patrón de **tres capas**:
+-----
 
-  * **Frontend:** Interfaz de usuario interactiva (HTML, CSS, JavaScript).
-  * **Backend:** API REST para la lógica de negocio y la gestión de datos (Python Flask).
-  * **Base de Datos:** Almacenamiento persistente de tickets (PostgreSQL).
+### 1\. `docker-compose.yml`
 
-Todos los componentes están **contenidos en Docker** y orquestados mediante `docker-compose.yml`.
-
-### 2\. Servicios Docker y su Configuración
-
-#### a. `db` (Base de Datos PostgreSQL)
-
-  * **Imagen:** `postgres:13`
-  * **Propósito:** Almacena la información de los tickets.
-  * **Credenciales:**
-      * `POSTGRES_DB: clubdb`
-      * `POSTGRES_USER: user`
-      * `POSTGRES_PASSWORD: password`
-  * **Volumen:** `db_data` (persistente), montado en `/var/lib/postgresql/data`.
-  * **Inicialización:** `./db/init.sql` se ejecuta en el primer arranque o si el volumen `db_data` se elimina.
-  * **Salud:** `healthcheck` asegura que la DB esté lista antes de que el `backend` se conecte.
-
-#### b. `backend` (API Flask)
-
-  * **Construcción:** A partir de `backend/Dockerfile`.
-  * **Propósito:** Lógica de negocio, creación/validación/actualización de tickets, generación de QR y PDFs.
-  * **Entorno:**
-      * `DB_HOST: db` (se conecta al servicio `db` de Docker Compose)
-      * `DB_NAME: clubdb`
-      * `DB_USER: user`
-      * `DB_PASSWORD: password`
-  * **Dependencia:** `db` (asegura que `db` esté `healthy`).
-  * **Puerto Interno:** 5000 (expuesto).
-  * **Volumen de Desarrollo:** `./backend:/app`
-
-#### c. `frontend` (Servidor Nginx y Aplicación Web)
-
-  * **Construcción:** A partir de `frontend/Dockerfile`.
-  * **Propósito:** Servir la aplicación web estática, gestionar certificados SSL y actuar como proxy inverso para el backend.
-  * **Puertos Expuestos:** `80:80` (HTTP) y `443:443` (HTTPS) en el host.
-  * **Dependencia:** `backend` (asegura que `backend` esté `started`).
-  * **Certificados SSL:** Carga `./certs/nginx-selfsigned.crt` y `./certs/nginx-selfsigned.key` para HTTPS.
-  * **Configuración Nginx:** Carga `./frontend/nginx.conf`.
-  * **Archivos Web:** `./frontend:/usr/share/nginx/html` (para desarrollo).
-
-#### d. `adminer` (Gestor de Base de Datos - Opcional)
-
-  * **Imagen:** `adminer:latest`
-  * **Propósito:** Interfaz web ligera para administrar la base de datos PostgreSQL.
-  * **Puerto:** `8080:8080` (host:contenedor).
-  * **Dependencia:** `db` (asegura que `db` esté `healthy`).
-  * **Sin Volumen:** No persiste la configuración de Adminer (servidores añadidos), útil para entornos de desarrollo/prueba rápidos.
-
-### 3\. Archivos Clave
-
-Aquí se detallan los contenidos de los archivos clave que has compartido:
-
-#### a. `docker-compose.yml`
+Este archivo orquesta todos los servicios de tu aplicación.
 
 ```yaml
 version: '3.8'
@@ -124,13 +84,29 @@ volumes:
   db_data:
 ```
 
-#### b. `db/init.sql`
+-----
+
+### 2\. `db/init.sql`
+
+Este script inicializa tu base de datos con las tablas `events` y `tickets`.
 
 ```sql
+-- db/init.sql (Actualizado)
+
+-- Tabla de eventos
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    event_date DATE NOT NULL,
+    location VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabla de tickets (modificada para incluir event_id)
 CREATE TABLE IF NOT EXISTS tickets (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    event_date DATE NOT NULL,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE, -- Clave foránea al evento
+    user_id VARCHAR(255), -- Ahora puede ser opcional o generado
     seat VARCHAR(50) NOT NULL,
     qr_content VARCHAR(255) UNIQUE NOT NULL,
     scaned BOOLEAN DEFAULT FALSE,
@@ -139,45 +115,48 @@ CREATE TABLE IF NOT EXISTS tickets (
 );
 ```
 
-#### c. `backend/Dockerfile`
+-----
+
+### 3\. `backend/Dockerfile`
+
+Dockerfile para la aplicación Flask del backend.
 
 ```dockerfile
-# Usa una imagen base de Python
+# backend/Dockerfile
 FROM python:3.9-slim-buster
 
-# Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copia los archivos de requisitos e instálalos
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia el código de la aplicación
-COPY app.py .
+COPY . .
 
-# Expone el puerto en el que correrá la aplicación Flask
-EXPOSE 5000
-
-# Comando para ejecutar la aplicación
 CMD ["python", "app.py"]
 ```
 
-#### d. `backend/requirements.txt`
+**Nota:** Asegúrate de tener un archivo `requirements.txt` en la carpeta `backend` con el siguiente contenido:
 
 ```
 Flask
+flask-cors
 psycopg2-binary
 qrcode
 reportlab
-Flask-Cors
 ```
 
-#### e. `backend/app.py`
+-----
+
+### 4\. `backend/app.py`
+
+El código de la aplicación Flask, con las rutas corregidas para coincidir con la reescritura de Nginx.
 
 ```python
+# backend/app.py (CORREGIDO)
+
 import os
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS # Importa CORS
+from flask import Flask, request, jsonify, send_file, url_for
+from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import DictCursor
 import qrcode
@@ -189,9 +168,9 @@ from datetime import datetime
 from reportlab.lib.utils import ImageReader
 
 app = Flask(__name__)
-CORS(app) # Habilita CORS para todas las rutas de la aplicación
+CORS(app)
 
-# Configuración de la base de datos (usando variables de entorno de docker-compose)
+# Configuración de la base de datos
 DB_HOST = os.getenv('DB_HOST', 'db')
 DB_NAME = os.getenv('DB_NAME', 'clubdb')
 DB_USER = os.getenv('DB_USER', 'user')
@@ -210,89 +189,218 @@ def get_db_connection():
 def home():
     return "Backend API del Club Deportivo"
 
-@app.route('/ticket/create', methods=['POST'])
-def create_ticket():
-    data = request.json
-    user_id = data.get('user_id')
-    event_date_str = data.get('event_date')
-    seat = data.get('seat')
+# --- Endpoints para Eventos ---
 
-    if not all([user_id, event_date_str, seat]):
-        return jsonify({"error": "Faltan datos: user_id, event_date, seat"}), 400
+# La ruta ahora es '/events' en lugar de '/api/events'
+@app.route('/events', methods=['POST'])
+def create_event():
+    data = request.json
+    name = data.get('name')
+    event_date_str = data.get('event_date')
+    location = data.get('location')
+
+    if not all([name, event_date_str]):
+        return jsonify({"error": "Faltan datos: name, event_date"}), 400
 
     try:
         event_date = datetime.strptime(event_date_str, '%Y-%m-%d').date()
     except ValueError:
         return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
 
-    # Generar un contenido único para el QR
-    qr_content = str(uuid.uuid4())
-
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO tickets (user_id, event_date, seat, qr_content) VALUES (%s, %s, %s, %s) RETURNING id;",
-            (user_id, event_date, seat, qr_content)
+            "INSERT INTO events (name, event_date, location) VALUES (%s, %s, %s) RETURNING id;",
+            (name, event_date, location)
         )
-        ticket_id = cur.fetchone()[0]
+        event_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        
+        validation_link = f"/validate?event_id={event_id}"
+
+        return jsonify({
+            "status": "success",
+            "message": "Evento creado con éxito",
+            "event": {
+                "id": event_id,
+                "name": name,
+                "event_date": event_date.strftime('%Y-%m-%d'),
+                "location": location,
+                "validation_link": validation_link
+            }
+        }), 201
+
+    except psycopg2.Error as e:
+        if conn: conn.rollback()
+        return jsonify({"error": f"Error de base de datos: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error interno del servidor: {e}"}), 500
+    finally:
+        if conn: conn.close()
+
+# La ruta ahora es '/events' en lugar de '/api/events'
+@app.route('/events', methods=['GET'])
+def get_all_events():
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=DictCursor)
+        cur.execute("SELECT id, name, event_date, location, created_at FROM events ORDER BY event_date DESC, created_at DESC;")
+        events = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        events_list = []
+        for event in events:
+            validation_link = f"/validate?event_id={event['id']}"
+            events_list.append({
+                "id": event['id'],
+                "name": event['name'],
+                "event_date": event['event_date'].strftime('%Y-%m-%d'),
+                "location": event['location'],
+                "created_at": event['created_at'].strftime('%Y-%m-%d %H:%M:%S'),
+                "validation_link": validation_link
+            })
+        return jsonify(events_list), 200
+
+    except psycopg2.Error as e:
+        return jsonify({"error": f"Error de base de datos: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error interno del servidor: {e}"}), 500
+    finally:
+        if conn: conn.close()
+
+# La ruta ahora es '/events/<int:event_id>' en lugar de '/api/events/<int:event_id>'
+@app.route('/events/<int:event_id>', methods=['GET'])
+def get_event_details(event_id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=DictCursor)
+        cur.execute("SELECT id, name, event_date, location, created_at FROM events WHERE id = %s;", (event_id,))
+        event = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if event:
+            validation_link = f"/validate?event_id={event['id']}"
+            return jsonify({
+                "id": event['id'],
+                "name": event['name'],
+                "event_date": event['event_date'].strftime('%Y-%m-%d'),
+                "location": event['location'],
+                "created_at": event['created_at'].strftime('%Y-%m-%d %H:%M:%S'),
+                "validation_link": validation_link
+            }), 200
+        else:
+            return jsonify({"error": "Evento no encontrado"}), 404
+
+    except psycopg2.Error as e:
+        return jsonify({"error": f"Error de base de datos: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error interno del servidor: {e}"}), 500
+    finally:
+        if conn: conn.close()
+
+# --- Endpoints para Tickets (Modificados) ---
+
+# La ruta ahora es '/ticket/create' en lugar de '/api/ticket/create'
+@app.route('/ticket/create', methods=['POST'])
+def create_ticket():
+    data = request.json
+    event_id = data.get('event_id')
+    user_id = data.get('user_id') 
+    seat = data.get('seat')
+
+    if not all([event_id, seat]):
+        return jsonify({"error": "Faltan datos: event_id, seat"}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=DictCursor)
+
+        cur.execute("SELECT id FROM events WHERE id = %s;", (event_id,))
+        if not cur.fetchone():
+            return jsonify({"error": "El evento especificado no existe"}), 404
+
+        if not user_id:
+            user_id = f"CLIENT-{uuid.uuid4().hex[:8].upper()}" 
+
+        qr_content = str(uuid.uuid4())
+
+        cur.execute(
+            "INSERT INTO tickets (event_id, user_id, seat, qr_content) VALUES (%s, %s, %s, %s) RETURNING id, user_id, event_id;",
+            (event_id, user_id, seat, qr_content)
+        )
+        ticket_info = cur.fetchone()
         conn.commit()
         cur.close()
 
-        # Generar QR y PDF
+        ticket_id = ticket_info['id']
+        generated_user_id = ticket_info['user_id']
+        ticket_event_id = ticket_info['event_id']
+
         buffer = BytesIO()
         c = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
 
-        # Información del ticket en el PDF
-        c.drawString(50, height - 50, f"Ticket para el Club Deportivo")
+        c.drawString(50, height - 50, f"Ticket para el Club Deportivo - Evento ID: {ticket_event_id}")
         c.drawString(50, height - 70, f"ID de Ticket: {ticket_id}")
-        c.drawString(50, height - 90, f"Usuario: {user_id}")
-        c.drawString(50, height - 110, f"Evento: {event_date.strftime('%d/%m/%Y')}")
+        c.drawString(50, height - 90, f"Usuario/Cliente: {generated_user_id}")
+
+        cur_pdf = conn.cursor(cursor_factory=DictCursor)
+        cur_pdf.execute("SELECT name, event_date FROM events WHERE id = %s;", (ticket_event_id,))
+        event_details_for_pdf = cur_pdf.fetchone()
+        cur_pdf.close()
+        if event_details_for_pdf:
+            c.drawString(50, height - 110, f"Evento: {event_details_for_pdf['name']} ({event_details_for_pdf['event_date'].strftime('%d/%m/%Y')})")
+        else:
+            c.drawString(50, height - 110, f"Evento ID: {ticket_event_id} (Fecha no disponible)")
+
         c.drawString(50, height - 130, f"Asiento: {seat}")
 
-        # Generar imagen QR
         qr_img = qrcode.make(qr_content)
         qr_img_buffer = BytesIO()
         qr_img.save(qr_img_buffer, format='PNG')
         qr_img_buffer.seek(0)
 
-        # Convertir el buffer a ImageReader
         qr_img_reader = ImageReader(qr_img_buffer)
 
-        # Dibujar QR en el PDF
         c.drawImage(qr_img_reader, width / 2 - 100, height - 300, width=200, height=200)
         c.drawString(50, height - 350, "Presente este QR para validación")
 
         c.save()
         buffer.seek(0)
 
-        return send_file(buffer, download_name=f'ticket_{ticket_id}.pdf', mimetype='application/pdf')
+        return send_file(buffer, download_name=f'ticket_event_{ticket_event_id}_user_{generated_user_id}.pdf', mimetype='application/pdf')
 
     except psycopg2.Error as e:
-        if conn:
-            conn.rollback()
+        if conn: conn.rollback()
         return jsonify({"error": f"Error de base de datos: {e}"}), 500
     except Exception as e:
         return jsonify({"error": f"Error interno del servidor: {e}"}), 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
+# La ruta ahora es '/ticket/validate' en lugar de '/api/ticket/validate'
 @app.route('/ticket/validate', methods=['POST'])
 def validate_ticket():
     data = request.json
     qr_content = data.get('qr_content')
+    event_id = data.get('event_id') 
 
-    if not qr_content:
-        return jsonify({"error": "Contenido QR no proporcionado"}), 400
+    if not all([qr_content, event_id]):
+        return jsonify({"error": "Faltan datos: qr_content, event_id"}), 400
 
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=DictCursor)
-        cur.execute("SELECT * FROM tickets WHERE qr_content = %s;", (qr_content,))
+        cur.execute("SELECT * FROM tickets WHERE qr_content = %s AND event_id = %s;", (qr_content, event_id))
         ticket = cur.fetchone()
         cur.close()
         conn.close()
@@ -303,37 +411,39 @@ def validate_ticket():
                 "message": "Ticket válido",
                 "ticket_info": {
                     "id": ticket['id'],
+                    "event_id": ticket['event_id'],
                     "user_id": ticket['user_id'],
-                    "event_date": ticket['event_date'].strftime('%Y-%m-%d'),
                     "seat": ticket['seat'],
+                    "qr_content": ticket['qr_content'],
                     "scaned": ticket['scaned'],
                     "scaned_at": ticket['scaned_at'].strftime('%Y-%m-%d %H:%M:%S') if ticket['scaned_at'] else None
                 }
             }), 200
         else:
-            return jsonify({"status": "invalid", "message": "Ticket no encontrado o inválido"}), 404
+            return jsonify({"status": "invalid", "message": "Ticket no encontrado para este evento o inválido"}), 404
 
     except psycopg2.Error as e:
         return jsonify({"error": f"Error de base de datos: {e}"}), 500
     except Exception as e:
         return jsonify({"error": f"Error interno del servidor: {e}"}), 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
-@app.route('/ticket/update_tiked_scaned', methods=['POST'])
+# La ruta ahora es '/ticket/update_scaned' en lugar de '/api/ticket/update_scaned'
+@app.route('/ticket/update_scaned', methods=['POST']) 
 def update_ticket_scaned():
     data = request.json
     qr_content = data.get('qr_content')
+    event_id = data.get('event_id') 
 
-    if not qr_content:
-        return jsonify({"error": "Contenido QR no proporcionado"}), 400
+    if not all([qr_content, event_id]):
+        return jsonify({"error": "Faltan datos: qr_content, event_id"}), 400
 
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("UPDATE tickets SET scaned = TRUE, scaned_at = NOW() WHERE qr_content = %s RETURNING id;", (qr_content,))
+        cur.execute("UPDATE tickets SET scaned = TRUE, scaned_at = NOW() WHERE qr_content = %s AND event_id = %s RETURNING id;", (qr_content, event_id))
         updated_ticket_id = cur.fetchone()
 
         if updated_ticket_id:
@@ -341,82 +451,59 @@ def update_ticket_scaned():
             cur.close()
             return jsonify({"status": "success", "message": "Ticket actualizado como escaneado", "ticket_id": updated_ticket_id[0]}), 200
         else:
-            return jsonify({"status": "error", "message": "Ticket no encontrado o ya escaneado"}), 404
+            return jsonify({"status": "error", "message": "Ticket no encontrado para este evento o ya escaneado"}), 404
 
     except psycopg2.Error as e:
-        if conn:
-            conn.rollback()
+        if conn: conn.rollback()
         return jsonify({"error": f"Error de base de datos: {e}"}), 500
     except Exception as e:
         return jsonify({"error": f"Error interno del servidor: {e}"}), 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 ```
 
-#### f. `frontend/Dockerfile`
+-----
+
+### 5\. `frontend/Dockerfile`
+
+Dockerfile para el servidor Nginx del frontend.
 
 ```dockerfile
-# Usa una imagen base de Nginx
+# frontend/Dockerfile
 FROM nginx:alpine
 
-# Copia los certificados SSL al contenedor
-# Asegúrate de que la carpeta 'certs' esté en el mismo nivel que tu Dockerfile
-COPY ./certs/nginx-selfsigned.crt /etc/nginx/ssl/nginx-selfsigned.crt
-COPY ./certs/nginx-selfsigned.key /etc/nginx/ssl/nginx-selfsigned.key
-
-# Copia la configuración de Nginx al contenedor
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copia los archivos estáticos de la web al directorio de Nginx
-COPY . /usr/share/nginx/html
-
-# Expone el puerto 80
-EXPOSE 80
-EXPOSE 443
-
-# Comando para iniciar Nginx (ya es el CMD por defecto de la imagen)
-CMD ["nginx", "-g", "daemon off;"]
+COPY html5-qrcode.min.js /usr/share/nginx/html/
+COPY index.html /usr/share/nginx/html/
 ```
 
-#### g. `frontend/nginx.conf`
+-----
+
+### 6\. `frontend/nginx.conf`
+
+Configuración de Nginx para servir el frontend y proxy las solicitudes a la API.
 
 ```nginx
-# Server para redireccionar todo el tráfico HTTP a HTTPS
+# frontend/nginx.conf
 server {
     listen 80;
-    server_name localhost; # O tu dominio si lo estás usando
-
-    return 301 https://$host$request_uri; # Redirecciona a HTTPS
-}
-
-# Server principal para el tráfico HTTPS
-server {
     listen 443 ssl;
-    server_name localhost; # O tu dominio
 
-    # Rutas a tus certificados SSL dentro del contenedor Docker
-    ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
-    ssl_certificate_key /etc/nginx/ssl/nginx-selfsigned.key;
+    ssl_certificate /etc/nginx/certs/nginx.crt;
+    ssl_certificate_key /etc/nginx/certs/nginx.key;
 
-    # Configuraciones SSL recomendadas para mayor seguridad
-    ssl_session_cache shared:SSL:10m;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256";
-    ssl_prefer_server_ciphers on;
+    server_name localhost;
 
-    # Ruta para los archivos estáticos del frontend
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
     location / {
-        root /usr/share/nginx/html;
-        index index.html index.htm;
-        try_files $uri $uri/ /index.html; # Permite SPAs (Single Page Applications)
+        try_files $uri $uri/ /index.html;
     }
 
-    # Proxy inverso para las llamadas a la API del backend
-    # Todas las solicitudes que empiezan por /api/ se redirigen al servicio 'backend'
     location /api/ {
         proxy_pass http://backend:5000/; # 'backend' es el nombre del servicio en docker-compose
         proxy_set_header Host $host;
@@ -429,7 +516,11 @@ server {
 }
 ```
 
-#### h. `index.html`
+-----
+
+### 7\. `frontend/index.html`
+
+El archivo principal del frontend, con la lógica para la gestión de eventos y la validación condicional.
 
 ```html
 <!DOCTYPE html>
@@ -437,221 +528,332 @@ server {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Tickets Club Deportivo</title>
+    <title>Gestión de Eventos y Tickets</title>
     <script src="html5-qrcode.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h1, h2 { color: #0056b3; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #0056b3; }
 
-        /* Estilos para las pestañas */
-        .tab-buttons { display: flex; margin-bottom: 20px; }
-        .tab-button {
-            flex-grow: 1;
-            padding: 10px 15px;
-            cursor: pointer;
-            border: 1px solid #ddd;
-            border-bottom: none;
-            background-color: #eee;
-            text-align: center;
-            font-weight: bold;
-            border-top-left-radius: 5px;
-            border-top-right-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-        .tab-button:hover { background-color: #e0e0e0; }
-        .tab-button.active { background-color: white; border-bottom: 1px solid white; }
-        .tab-content {
-            border: 1px solid #ddd;
-            border-top: none;
-            padding: 20px;
-            background-color: #f9f9f9;
-            border-bottom-left-radius: 5px;
-            border-bottom-right-radius: 5px;
-        }
-        .tab-pane { display: none; }
-        .tab-pane.active { display: block; }
-
-        form { margin-bottom: 15px; padding: 0; border: none; background-color: transparent; }
+        form { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9; }
         label { display: block; margin-bottom: 8px; font-weight: bold; }
-        input[type="text"], input[type="date"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        input[type="text"], input[type="date"], input[type="number"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; margin-right: 10px;}
         button:hover { background-color: #0056b3; }
-        #response, #validationResult { margin-top: 20px; padding: 10px; border-radius: 4px; }
-        #response.success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
-        #response.error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
-        #validationResult.valid { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
-        #validationResult.invalid { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .info { background-color: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; padding: 10px; border-radius: 4px; margin-top: 10px; }
 
-        /* Estilos específicos para el escáner QR */
+        /* Estilos de la lista de eventos */
+        #eventsList { list-style: none; padding: 0; }
+        #eventsList li {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        #eventsList li div { margin-right: 15px; }
+        #eventsList li h3 { margin: 0 0 5px 0; font-size: 1.2em; }
+        #eventsList li p { margin: 0; color: #555; font-size: 0.9em; }
+        #eventsList li .event-actions button { margin-left: 5px; }
+        #copyLinkButton { background-color: #28a745; }
+        #copyLinkButton:hover { background-color: #218838; }
+
+        /* Validación QR */
+        #qr-reader-container { text-align: center; }
         #qr-reader { width: 100%; max-width: 500px; margin: 20px auto; border: 1px solid #ccc; border-radius: 5px; overflow: hidden; }
         #qr-reader__dashboard { background-color: #f0f0f0; padding: 10px; border-top: 1px solid #ccc; }
         #qr-reader__dashboard button { margin: 5px; }
         #qr-reader__scan_region { border: 2px solid #007bff; border-radius: 5px; }
         .validation-info { margin-top: 15px; font-weight: bold; }
-        .validation-info.success { color: #155724; }
-        .validation-info.error { color: #721c24; }
+        .validation-info.valid { background-color: #d4edda; color: #155724; border-color: #c3e6cb; padding: 10px; border-radius: 4px; }
+        .validation-info.invalid { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; padding: 10px; border-radius: 4px; }
         #stopScannerButton { background-color: #dc3545; }
         #stopScannerButton:hover { background-color: #c82333; }
+
+        /* Modal para crear tickets */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+            max-width: 500px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Gestión de Tickets del Club Deportivo</h1>
+        <div id="mainContent">
+            <h1>Gestión de Eventos del Club Deportivo</h1>
 
-        <div class="tab-buttons">
-            <div id="createTabButton" class="tab-button active" onclick="openTab('createTab')">Crear Ticket</div>
-            <div id="validateTabButton" class="tab-button" onclick="openTab('validateTab')">Validar Ticket</div>
+            <h2>Crear Nuevo Evento</h2>
+            <form id="createEventForm">
+                <label for="eventName">Nombre del Evento:</label>
+                <input type="text" id="eventName" name="name" required><br>
+
+                <label for="eventDate">Fecha del Evento (YYYY-MM-DD):</label>
+                <input type="date" id="eventDate" name="event_date" required><br>
+
+                <label for="eventLocation">Ubicación (Opcional):</label>
+                <input type="text" id="eventLocation" name="location"><br>
+
+                <button type="submit">Crear Evento</button>
+            </form>
+            <div id="eventResponse" class="info"></div>
+
+            <h2>Eventos Existentes</h2>
+            <ul id="eventsList">
+                <li>Cargando eventos...</li>
+            </ul>
         </div>
 
-        <div class="tab-content">
-            <div id="createTab" class="tab-pane active">
-                <h2>Crear Nuevo Ticket</h2>
-                <form id="createTicketForm">
-                    <label for="userId">ID de Usuario:</label>
-                    <input type="text" id="userId" name="user_id" required><br>
-
-                    <label for="eventDate">Fecha del Evento (YYYY-MM-DD):</label>
-                    <input type="date" id="eventDate" name="event_date" required><br>
-
-                    <label for="seat">Asiento:</label>
-                    <input type="text" id="seat" name="seat" required><br>
-
-                    <button type="submit">Generar Ticket y PDF</button>
-                </form>
-                <div id="response"></div>
-            </div>
-
-            <div id="validateTab" class="tab-pane">
-                <h2>Validar Ticket por QR</h2>
+        <div id="validationContent" style="display: none;">
+            <h1 id="validationHeader">Validación de Tickets para Evento: <span id="currentEventName"></span> (<span id="currentEventDate"></span>)</h1>
+            <div id="qr-reader-container">
                 <div id="qr-reader"></div>
                 <button id="stopScannerButton" style="display: none;">Detener Escáner</button>
                 <div id="validationResult" class="validation-info"></div>
             </div>
+            <button onclick="window.location.href='/'">Volver a Gestión de Eventos</button>
         </div>
+
+        <div id="createTicketModal" class="modal">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <h2 id="modalEventName">Crear Tickets para: </h2>
+                <form id="createTicketForm">
+                    <input type="hidden" id="modalEventId">
+                    <label for="ticketUserId">ID de Cliente (Opcional, se generará si está vacío):</label>
+                    <input type="text" id="ticketUserId" name="user_id"><br>
+
+                    <label for="ticketSeat">Asiento:</label>
+                    <input type="text" id="ticketSeat" name="seat" required><br>
+
+                    <button type="submit">Generar Ticket y PDF</button>
+                </form>
+                <div id="ticketResponse" class="info"></div>
+            </div>
+        </div>
+
     </div>
 
     <script>
-        const backendApiUrl = '/api'; // Apunta a la ruta proxied por Nginx
+        // La URL base para las llamadas a la API (Nginx la proxeará al backend)
+        const backendApiUrl = '/api'; 
         let qrScanner = null; // Variable global para la instancia del escáner
+        let currentEventId = null; // ID del evento actual para la validación
 
-        // --- Funcionalidad de Pestañas ---
-        function openTab(tabName) {
-            // Desactivar todas las pestañas y botones
-            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-            document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+        // --- Funciones de Utilidad ---
+        function getQueryParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
 
-            // Activar la pestaña y el botón seleccionados
-            document.getElementById(tabName).classList.add('active');
-            document.getElementById(tabName + 'Button').classList.add('active');
+        function showSection(sectionId) {
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('validationContent').style.display = 'none';
+            document.getElementById(sectionId).style.display = 'block';
+        }
 
-            if (tabName === 'validateTab') {
-                const qrReaderElement = document.getElementById('qr-reader');
-                if (qrReaderElement) {
-                    // Limpiar el contenido existente del lector para asegurar una inicialización limpia
-                    qrReaderElement.innerHTML = '';
-
-                    // Detener y limpiar el escáner existente antes de intentar uno nuevo
-                    // Esto es crucial para liberar los recursos de la cámara y evitar conflictos
-                    if (qrScanner && qrScanner.isScanning) {
-                        qrScanner.stop().then(() => {
-                            qrScanner.clear(); // Limpia la interfaz del escáner
-                            qrScanner = null; // Reinicia la instancia
-                            initializeAndStartQrScanner(); // Inicializa y arranca de nuevo
-                        }).catch(err => {
-                            console.error("Error al detener escáner existente (puede que ya esté detenido):", err);
-                            // Si falla al detener, intenta forzar la inicialización de todas formas
-                            if (qrScanner) qrScanner.clear(); // Intenta limpiar
-                            qrScanner = null;
-                            initializeAndStartQrScanner();
-                        });
-                    } else if (qrScanner && !qrScanner.isScanning) {
-                        // Si el escáner existe pero está detenido, solo inicialízalo y arráncalo
-                        initializeAndStartQrScanner();
-                    } else {
-                        // Si no existe, inicialízalo por primera vez
-                        initializeAndStartQrScanner();
-                    }
-                } else {
-                    console.error("Elemento 'qr-reader' no encontrado.");
-                    document.getElementById('validationResult').className = 'validation-info error';
-                    document.getElementById('validationResult').textContent = 'Error: No se encontró el elemento HTML para el escáner QR.';
-                }
-                document.getElementById('stopScannerButton').style.display = 'block';
+        // --- Inicialización y Enrutamiento ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const eventIdParam = getQueryParam('event_id');
+            if (eventIdParam) {
+                currentEventId = eventIdParam;
+                showValidationView(currentEventId);
             } else {
-                // Si cambiamos a otra pestaña, detener el escáner si está activo
-                stopQrScanner();
-                document.getElementById('stopScannerButton').style.display = 'none';
-                const qrReaderElement = document.getElementById('qr-reader');
-                if (qrReaderElement) qrReaderElement.innerHTML = ''; // Limpiar el contenido del lector
+                showEventManagementView();
+                loadEvents();
             }
+        });
+
+        // --- Vista de Gestión de Eventos ---
+        function showEventManagementView() {
+            showSection('mainContent');
+            stopQrScanner(); // Asegurarse de que el escáner esté detenido si se vuelve a la gestión
+            document.getElementById('stopScannerButton').style.display = 'none';
         }
 
-        // --- Funcionalidad para inicializar y arrancar el escáner QR ---
-        function initializeAndStartQrScanner() {
-            // Verifica que Html5Qrcode esté definido globalmente
-            if (typeof Html5Qrcode === 'undefined') {
-                console.error("Error: La librería Html5Qrcode no está cargada. Asegúrate de que el CDN es accesible.");
-                document.getElementById('validationResult').className = 'validation-info error';
-                document.getElementById('validationResult').textContent = 'Error: La librería del escáner QR no se ha cargado correctamente. Revise la consola del navegador.';
-                return;
-            }
+        // --- Vista de Validación de Tickets ---
+        async function showValidationView(eventId) {
+            showSection('validationContent');
+            document.getElementById('stopScannerButton').style.display = 'block';
+            document.getElementById('validationResult').textContent = ''; // Limpiar resultados anteriores
 
-            // Si qrScanner no está inicializado, crea una nueva instancia
-            if (!qrScanner) {
-                qrScanner = new Html5Qrcode("qr-reader");
-            }
-
-            // Si ya está escaneando, no hacer nada
-            if (qrScanner.isScanning) {
-                console.log("Escáner ya está activo, no se necesita iniciar de nuevo.");
-                return;
-            }
-
-            // Iniciar el escáner
-            qrScanner.start(
-                { facingMode: "environment" }, // Preferir la cámara trasera en móviles
-                {
-                    fps: 10,    // Velocidad de escaneo (fotogramas por segundo)
-                    qrbox: { width: 250, height: 250 } // Área del recuadro de escaneo
-                },
-                qrCodeSuccessCallback,
-                (errorMessage) => { // Callback de error al iniciar
-                    console.warn("Advertencia al iniciar el escáner QR:", errorMessage); // Cambiado a warn, ya que muchos son ruido
-                    // Solo muestra un error persistente si la causa es grave (ej. no hay cámara, permisos denegados)
-                    if (errorMessage.includes("NotAllowedError") || errorMessage.includes("NotFoundError")) {
-                        document.getElementById('validationResult').className = 'validation-info error';
-                        document.getElementById('validationResult').textContent = 'Error: No se pudo acceder a la cámara. Verifique permisos o si hay una cámara disponible.';
-                    } else if (errorMessage.includes("Permission denied")) {
-                        document.getElementById('validationResult').className = 'validation-info error';
-                        document.getElementById('validationResult').textContent = 'Error: Acceso a la cámara denegado. Permita el acceso en la configuración del navegador.';
-                    }
+            // Obtener y mostrar detalles del evento
+            try {
+                // Se llama a /api/events/<eventId> y Nginx lo proxeará a /events/<eventId> en el backend
+                const response = await fetch(`${backendApiUrl}/events/${eventId}`);
+                const eventData = await response.json();
+                if (response.ok) {
+                    document.getElementById('currentEventName').textContent = eventData.name;
+                    document.getElementById('currentEventDate').textContent = eventData.event_date;
+                } else {
+                    document.getElementById('validationHeader').textContent = `Error: Evento ${eventId} no encontrado.`;
                 }
-            ).catch(err => {
-                console.error("Falló la promesa al iniciar el escáner QR:", err);
-                document.getElementById('validationResult').className = 'validation-info error';
-                document.getElementById('validationResult').textContent = `Error al iniciar el escáner QR. (Detalle: ${err.message || err})`;
-            });
-            console.log("Intentando iniciar el escáner QR...");
+            } catch (error) {
+                document.getElementById('validationHeader').textContent = `Error al cargar detalles del evento ${eventId}.`;
+                console.error("Error fetching event details:", error);
+            }
+
+            initializeAndStartQrScanner();
         }
 
-        // --- Funcionalidad de Crear Ticket ---
-        document.getElementById('createTicketForm').addEventListener('submit', async (e) => {
+        // --- Crear Evento ---
+        document.getElementById('createEventForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const userId = document.getElementById('userId').value;
-            const eventDate = document.getElementById('eventDate').value;
-            const seat = document.getElementById('seat').value;
-            const responseDiv = document.getElementById('response');
-            responseDiv.className = '';
-            responseDiv.textContent = 'Generando ticket...';
+            const name = document.getElementById('eventName').value;
+            const event_date = document.getElementById('eventDate').value;
+            const location = document.getElementById('eventLocation').value;
+            const eventResponseDiv = document.getElementById('eventResponse');
+            eventResponseDiv.className = 'info';
+            eventResponseDiv.textContent = 'Creando evento...';
 
             try {
+                // Se llama a /api/events y Nginx lo proxeará a /events en el backend
+                const response = await fetch(`${backendApiUrl}/events`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, event_date, location })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    eventResponseDiv.className = 'success';
+                    eventResponseDiv.innerHTML = `Evento "${data.event.name}" creado con éxito.<br>
+                                                 Link de Validación: <a href="${data.event.validation_link}" target="_blank">${window.location.origin}${data.event.validation_link}</a>
+                                                 <button onclick="copyToClipboard('${window.location.origin}${data.event.validation_link}')">Copiar Link</button>`;
+                    document.getElementById('createEventForm').reset();
+                    loadEvents(); // Recargar la lista de eventos
+                } else {
+                    eventResponseDiv.className = 'error';
+                    eventResponseDiv.textContent = `Error al crear evento: ${data.error || response.statusText}`;
+                }
+            } catch (error) {
+                eventResponseDiv.className = 'error';
+                eventResponseDiv.textContent = `Error de conexión: ${error.message}`;
+                console.error("Error creating event:", error);
+            }
+        });
+
+        // --- Cargar Eventos ---
+        async function loadEvents() {
+            const eventsList = document.getElementById('eventsList');
+            eventsList.innerHTML = '<li>Cargando eventos...</li>';
+            try {
+                // Se llama a /api/events y Nginx lo proxeará a /events en el backend
+                const response = await fetch(`${backendApiUrl}/events`);
+                const events = await response.json();
+                eventsList.innerHTML = ''; // Limpiar mensaje de carga
+
+                if (events.length === 0) {
+                    eventsList.innerHTML = '<li>No hay eventos creados.</li>';
+                    return;
+                }
+
+                events.forEach(event => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <div>
+                            <h3>${event.name}</h3>
+                            <p>Fecha: ${event.event_date}</p>
+                            <p>Ubicación: ${event.location || 'N/A'}</p>
+                            <p>ID: ${event.id}</p>
+                        </div>
+                        <div class="event-actions">
+                            <button onclick="openCreateTicketModal(${event.id}, '${event.name}', '${event.event_date}')">Dar de Alta Clientes</button>
+                            <button onclick="copyToClipboard('${window.location.origin}${event.validation_link}')">Copiar Link de Validación</button>
+                            <button onclick="window.location.href='${event.validation_link}'">Ir a Validación</button>
+                        </div>
+                    `;
+                    eventsList.appendChild(li);
+                });
+            } catch (error) {
+                eventsList.innerHTML = '<li class="error">Error al cargar eventos.</li>';
+                console.error("Error loading events:", error);
+            }
+        }
+
+        // --- Funciones para el Modal de Crear Tickets ---
+        const createTicketModal = document.getElementById('createTicketModal');
+        const closeButton = document.querySelector('.close-button');
+        const modalEventName = document.getElementById('modalEventName');
+        const modalEventId = document.getElementById('modalEventId');
+        const createTicketForm = document.getElementById('createTicketForm');
+        const ticketResponse = document.getElementById('ticketResponse');
+
+        closeButton.onclick = () => {
+            createTicketModal.style.display = 'none';
+        }
+
+        window.onclick = (event) => {
+            if (event.target == createTicketModal) {
+                createTicketModal.style.display = 'none';
+            }
+        }
+
+        function openCreateTicketModal(eventId, eventName, eventDate) {
+            modalEventName.textContent = `Crear Tickets para: ${eventName} (${eventDate})`;
+            modalEventId.value = eventId;
+            ticketResponse.className = 'info';
+            ticketResponse.textContent = ''; // Limpiar mensaje anterior
+            document.getElementById('ticketUserId').value = ''; // Limpiar ID de usuario
+            document.getElementById('ticketSeat').value = ''; // Limpiar asiento
+            createTicketModal.style.display = 'block';
+        }
+
+        createTicketForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const event_id = document.getElementById('modalEventId').value;
+            const user_id = document.getElementById('ticketUserId').value;
+            const seat = document.getElementById('ticketSeat').value;
+
+            ticketResponse.className = 'info';
+            ticketResponse.textContent = 'Generando ticket...';
+
+            try {
+                const payload = { event_id, seat };
+                if (user_id) { // Solo añadir user_id si no está vacío
+                    payload.user_id = user_id;
+                }
+
+                // Se llama a /api/ticket/create y Nginx lo proxeará a /ticket/create en el backend
                 const response = await fetch(`${backendApiUrl}/ticket/create`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ user_id: userId, event_date: eventDate, seat: seat })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
 
                 if (response.ok) {
@@ -659,40 +861,80 @@ server {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `ticket_${userId}_${eventDate}.pdf`;
-                    document.body.appendChild(a); // Es importante que el elemento esté en el DOM para que el click funcione
+                    a.download = `ticket_event_${event_id}_${user_id || 'generado'}.pdf`;
+                    document.body.appendChild(a);
                     a.click();
-                    a.remove(); // Limpia el elemento después de la descarga
-                    window.URL.revokeObjectURL(url); // Libera la URL del objeto
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
 
-                    responseDiv.className = 'success';
-                    responseDiv.textContent = 'Ticket generado y PDF descargado con éxito.';
-                    document.getElementById('createTicketForm').reset(); // Limpiar formulario
+                    ticketResponse.className = 'success';
+                    ticketResponse.textContent = 'Ticket generado y PDF descargado con éxito.';
+                    createTicketForm.reset(); // Limpiar formulario del modal
                 } else {
                     const errorData = await response.json();
-                    responseDiv.className = 'error';
-                    responseDiv.textContent = `Error al generar ticket: ${errorData.error || response.statusText}`;
+                    ticketResponse.className = 'error';
+                    ticketResponse.textContent = `Error al generar ticket: ${errorData.error || response.statusText}`;
                 }
             } catch (error) {
-                responseDiv.className = 'error';
-                responseDiv.textContent = `Error de conexión: ${error.message}`;
+                ticketResponse.className = 'error';
+                ticketResponse.textContent = `Error de conexión: ${error.message}`;
                 console.error("Error al crear ticket:", error);
             }
         });
 
-        // --- Funcionalidad de Escaneo y Validación QR (Callbacks) ---
+        // --- Funcionalidad de Escaneo y Validación QR ---
+        function initializeAndStartQrScanner() {
+            if (typeof Html5Qrcode === 'undefined') {
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = 'Error: La librería del escáner QR no se ha cargado correctamente.';
+                return;
+            }
+
+            if (!qrScanner) {
+                qrScanner = new Html5Qrcode("qr-reader");
+            }
+
+            if (qrScanner.isScanning) {
+                console.log("Escáner ya está activo, no se necesita iniciar de nuevo.");
+                return;
+            }
+
+            // Opciones de configuración del escáner
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                // Preferir la cámara trasera/entorno si está disponible
+                facingMode: "environment" 
+            };
+
+            qrScanner.start(
+                config,
+                qrCodeSuccessCallback,
+                (errorMessage) => {
+                    // No mostrar errores de frames si no hay QR detectado, solo errores de cámara.
+                    if (errorMessage.includes("NotAllowedError") || errorMessage.includes("NotFoundError") || errorMessage.includes("Permission denied")) {
+                        document.getElementById('validationResult').className = 'validation-info error';
+                        document.getElementById('validationResult').textContent = 'Error: No se pudo acceder a la cámara. Verifique permisos o si hay una cámara disponible.';
+                    }
+                }
+            ).catch(err => {
+                document.getElementById('validationResult').className = 'validation-info error';
+                document.getElementById('validationResult').textContent = `Error al iniciar el escáner QR. (Detalle: ${err.message || err})`;
+                console.error("Error starting QR scanner:", err);
+            });
+        }
+
         const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
             console.log(`QR Scanned: ${decodedText}`);
-            stopQrScanner(); // Detener el escáner inmediatamente para evitar lecturas duplicadas
+            stopQrScanner(); // Detener el escáner después de una lectura exitosa
             document.getElementById('validationResult').textContent = 'Validando QR...';
 
             try {
+                // Se llama a /api/ticket/validate y Nginx lo proxeará a /ticket/validate en el backend
                 const response = await fetch(`${backendApiUrl}/ticket/validate`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ qr_content: decodedText })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ qr_content: decodedText, event_id: currentEventId })
                 });
 
                 const data = await response.json();
@@ -700,30 +942,26 @@ server {
 
                 if (response.ok) {
                     if (data.ticket_info.scaned) {
-                        validationResultDiv.className = 'validation-info error';
-                        validationResultDiv.textContent = `Ticket ya escaneado: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+                        validationResultDiv.className = 'validation-info invalid'; // Usar invalid para ya escaneado
+                        validationResultDiv.textContent = `Ticket ya escaneado: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}. Pertenece a ${data.ticket_info.user_id}, Asiento: ${data.ticket_info.seat}`;
                     } else {
-                        validationResultDiv.className = 'validation-info success';
-                        validationResultDiv.innerHTML = `Ticket válido: <br>
+                        validationResultDiv.className = 'validation-info valid';
+                        validationResultDiv.innerHTML = `Ticket válido para el evento ${currentEventId}: <br>
                         ID: ${data.ticket_info.id}<br>
-                        Usuario: ${data.ticket_info.user_id}<br>
-                        Fecha Evento: ${data.ticket_info.event_date}<br>
-                        Asiento: ${data.ticket_info.seat}<br>
-                        Escaneado: ${data.ticket_info.scaned ? 'Sí' : 'No'}<br>
-                        Escaneado en: ${data.ticket_info.scaned_at ? new Date(data.ticket_info.scaned_at).toLocaleString() : 'N/A'}`;
+                        Usuario/Cliente: ${data.ticket_info.user_id}<br>
+                        Asiento: ${data.ticket_info.seat}`;
 
-                        // llamar a la api para marcar el ticket como escaneado
-                        await fetch(`${backendApiUrl}/ticket/update_tiked_scaned`, {
+                        // Marcar el ticket como escaneado
+                        // Se llama a /api/ticket/update_scaned y Nginx lo proxeará a /ticket/update_scaned en el backend
+                        await fetch(`${backendApiUrl}/ticket/update_scaned`, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ qr_content: decodedText })
-                        }); 
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ qr_content: decodedText, event_id: currentEventId })
+                        });
                     }
                 } else {
                     validationResultDiv.className = 'validation-info invalid';
-                    validationResultDiv.textContent = `Ticket inválido: ${data.message || response.statusText}`;
+                    validationResultDiv.textContent = `Ticket inválido para este evento: ${data.message || response.statusText}`;
                 }
             } catch (error) {
                 document.getElementById('validationResult').className = 'validation-info error';
@@ -733,11 +971,6 @@ server {
                 // Reanudar el escáner después de un breve retraso para permitir nuevas validaciones
                 setTimeout(initializeAndStartQrScanner, 3000);
             }
-        };
-
-        const qrCodeErrorCallback = (errorMessage) => {
-            // Este callback se activa constantemente si no hay QR. No es necesario mostrarlo al usuario por cada error menor.
-            // console.warn(`QR Scanner Frame Error: ${errorMessage}`);
         };
 
         function stopQrScanner() {
@@ -754,12 +987,44 @@ server {
             document.getElementById('stopScannerButton').style.display = 'none';
         });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('createTabButton').addEventListener('click', () => openTab('createTab'));
-            document.getElementById('validateTabButton').addEventListener('click', () => openTab('validateTab'));
-            openTab('createTab'); // Abre la pestaña de creación por defecto al cargar la página
-        });
+        // --- Funciones de Portapapeles ---
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('¡Enlace copiado al portapapeles!');
+            }).catch(err => {
+                console.error('Error al copiar el texto: ', err);
+                alert('No se pudo copiar el enlace. Por favor, cópielo manualmente: ' + text);
+            });
+        }
     </script>
 </body>
 </html>
 ```
+
+-----
+
+### 8\. `frontend/html5-qrcode.min.js`
+
+Asegúrate de tener este archivo JavaScript de la librería HTML5-QRCODE en la misma carpeta `frontend`. Puedes descargarlo de su repositorio oficial (busca "html5-qrcode github" y ve a la sección de releases).
+
+-----
+
+### Pasos para el Despliegue y Pruebas:
+
+1.  **Guarda todos los archivos** en sus respectivas ubicaciones dentro de tu estructura de carpetas.
+2.  **Si ya tenías el proyecto funcionando y has cambiado `db/init.sql`**:
+      * Detén y elimina los contenedores y el volumen de la base de datos para asegurar que la nueva estructura de DB se aplique:
+        ```bash
+        docker-compose down # O "docker compose down" si usas la versión más nueva
+        docker volume ls    # Para identificar el nombre exacto de tu volumen de DB (ej: club_depor_db_data)
+        docker volume rm <nombre_de_tu_volumen_db>
+        ```
+3.  **Construye y levanta todos los servicios de Docker:**
+    ```bash
+    docker-compose up --build -d # O "docker compose up --build -d"
+    ```
+    El `--build` es crucial para que Docker reconstruya las imágenes del backend y frontend con los últimos cambios de código y configuración.
+4.  **Accede a la aplicación:**
+      * Una vez que todos los servicios estén en `Up` (y `healthy` si aplica), abre tu navegador y ve a `https://localhost` (o `http://localhost` si no tienes certificados SSL configurados en tu sistema local para Nginx).
+
+¡Con estos códigos, tu proyecto debería estar funcionando con todas las nuevas características\!
