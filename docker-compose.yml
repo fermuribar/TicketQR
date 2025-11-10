@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:13
@@ -30,6 +28,11 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build: ./frontend
@@ -37,9 +40,6 @@ services:
     ports:
       - "80:80" # El frontend expone el puerto 80 del host
       - "443:443" # El frontend expone el puerto 443 del host
-    depends_on:
-      backend:
-        condition: service_started
     volumes:
       - ./frontend:/usr/share/nginx/html # Monta los archivos estáticos para desarrollo
       - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf # Monta la configuración de Nginx
