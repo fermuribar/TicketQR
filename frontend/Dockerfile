@@ -1,5 +1,5 @@
 # Usa una imagen base de Nginx
-FROM nginx:alpine
+FROM nginx:1.29.4-alpine3.23
 
 # Copia los certificados SSL al contenedor
 # Asegúrate de que la carpeta 'certs' esté en el mismo nivel que tu Dockerfile
